@@ -13,6 +13,10 @@ public sealed class FilenameParserTests
     [DataRow("male-range-gun-beastfolk.jfif", "male", "range", "gun", "beastfolk", ".jfif")]
     [DataRow("female-caster-druid-tiefling.png", "female", "caster", "druid", "tiefling", ".png")]
     [DataRow("female-caster-druid-water (12).png", "female", "caster", "druid", "elemental", ".png")]
+    [DataRow("female-caster-bard-human__8f21a3.jpg", "female", "caster", "bard", "human", ".jpg")]
+    [DataRow("female-caster-bard-human__8f21a3.JPG", "female", "caster", "bard", "human", ".JPG")]
+    [DataRow("male-melee-blade-tiefling__abcdef.png", "male", "melee", "blade", "tiefling", ".png")]
+    [DataRow("female-generic-aasimar__123abc.webp", "female", "generic", null, "aasimar", ".webp")]
     [DataRow("hero.gif", null, null, null, null, ".gif")]
     public void Parse_RecognizesSupportedNamesAndPreservesExtension(string fileName, string? gender, string? role, string? style, string? race, string extension)
     {

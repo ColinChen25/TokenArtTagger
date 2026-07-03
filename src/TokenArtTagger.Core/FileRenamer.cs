@@ -59,7 +59,7 @@ public static class FileRenamer
 
     public static async Task<RenameBatchResult> RenameAsync(
         RenamePreview preview,
-        string undoRootFolder,
+        string undoLogFolder,
         CancellationToken cancellationToken = default)
     {
         var errors = new List<FileOperationError>();
@@ -95,19 +95,18 @@ public static class FileRenamer
             }
         }
 
-        var undoLogPath = await WriteUndoLogAsync(undoRootFolder, undoEntries, cancellationToken).ConfigureAwait(false);
+        var undoLogPath = await WriteUndoLogAsync(undoLogFolder, undoEntries, cancellationToken).ConfigureAwait(false);
         return new RenameBatchResult(undoEntries.Count, errors, undoLogPath);
     }
 
     private static async Task<string> WriteUndoLogAsync(
-        string undoRootFolder,
+        string undoLogFolder,
         IReadOnlyList<RenameUndoEntry> undoEntries,
         CancellationToken cancellationToken)
     {
-        var undoFolder = Path.Combine(undoRootFolder, ".tokenarttagger-undo");
-        Directory.CreateDirectory(undoFolder);
+        Directory.CreateDirectory(undoLogFolder);
         var fileName = $"rename-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}.json";
-        var undoLogPath = Path.Combine(undoFolder, fileName);
+        var undoLogPath = Path.Combine(undoLogFolder, fileName);
         var undoLog = new RenameUndoLog(DateTimeOffset.Now, undoEntries);
         var options = new JsonSerializerOptions { WriteIndented = true };
 

@@ -1,4 +1,4 @@
-# TokenArtTagger v0.2.0
+# TokenArtTagger v0.2.1
 
 TokenArtTagger is a small local Windows WPF app for quickly tagging tabletop RPG character art, building partial tags with virtual buckets, and previewing safe in-place renames.
 
@@ -28,6 +28,10 @@ Use a copied test folder first, for example `C:\Path\To\Your\ImageLibrary`.
 
 Partial bucket tags are saved as work-in-progress app data outside the scanned image folder and outside the repository by default.
 
+Use the clear temporary tag buttons to reset selected images, the current bucket pass, or all changed images back to tags parsed from their current filenames. These reset actions do not rename, move, delete, or edit image files.
+
+Right-click a thumbnail to inspect a larger preview from the original file path. In the preview window, mouse wheel zooms, left-drag pans, right-click closes, and Escape closes.
+
 ## Supported Formats
 
 - `.jpg`
@@ -43,7 +47,9 @@ GIF thumbnails show as a still frame. WebP thumbnail support depends on the Wind
 
 Test on a copied folder before using the real image library.
 
-The app only renames selected files in place after preview and confirmation. It does not move files, delete files, or rename automatically after tagging. Each rename batch writes a JSON undo log under `.tokenarttagger-undo` in the selected root folder; that folder is ignored by Git.
+The app only renames selected files in place after preview and confirmation. It does not move files, delete files, or rename automatically after tagging. Each rename batch writes a JSON undo log under `%LOCALAPPDATA%\TokenArtTagger\UndoLogs`.
+
+Older `.tokenarttagger-undo` folders in scanned image libraries are left alone. If one is found, the app warns so you can manually archive or remove it later.
 
 Output filenames use stable content hashes:
 
@@ -61,7 +67,7 @@ The original extension and extension casing are preserved.
 - No AI tagging or automatic tag suggestions.
 - Thumbnail decode failures are shown as blank thumbnails rather than blocking scan/rename.
 - Middle-click autoscroll is not implemented; normal scrollbar dragging and mouse wheel scrolling are the supported fast-scroll methods.
-- Rubber-band rectangle selection is not implemented.
+- Rectangle selection is basic: drag from empty grid space to select intersecting visible tiles. Ctrl-drag toggles intersecting tiles.
 
 ## Tests
 

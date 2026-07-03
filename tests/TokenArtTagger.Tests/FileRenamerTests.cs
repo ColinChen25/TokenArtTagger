@@ -82,13 +82,16 @@ public sealed class FileRenamerTests
         var item = ImageItem.FromPath(path);
         var preview = await FileRenamer.BuildPreviewAsync([item]);
 
-        var result = await FileRenamer.RenameAsync(preview, temp.Path);
+        var undoFolder = Path.Combine(temp.Path, "appdata", "UndoLogs");
+        var result = await FileRenamer.RenameAsync(preview, undoFolder);
 
         Assert.AreEqual(1, result.RenamedCount);
         Assert.AreEqual(0, result.Errors.Count);
         Assert.IsFalse(File.Exists(path));
         Assert.IsTrue(File.Exists(Path.Combine(temp.Path, "female-caster-bard-elf__74f81f.JPG")));
         Assert.IsTrue(File.Exists(result.UndoLogPath));
+        Assert.IsTrue(result.UndoLogPath.StartsWith(undoFolder, StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(Directory.Exists(Path.Combine(temp.Path, ".tokenarttagger-undo")));
 
         using var log = File.OpenRead(result.UndoLogPath);
         var undoLog = await JsonSerializer.DeserializeAsync<RenameUndoLog>(log);

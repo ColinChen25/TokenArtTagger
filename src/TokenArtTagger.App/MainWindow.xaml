@@ -6,7 +6,8 @@
         xmlns:vm="clr-namespace:TokenArtTagger.App.ViewModels"
         mc:Ignorable="d"
         Title="{Binding AppTitle}" Height="860" MinHeight="680" Width="1380" MinWidth="1060"
-        Background="#F4F3EF">
+        Background="#F4F3EF"
+        PreviewKeyDown="Window_PreviewKeyDown">
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
@@ -28,6 +29,8 @@
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="Margin" Value="0,0,6,6" />
             <Setter Property="Padding" Value="8,4" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="AllowDrop" Value="True" />
             <EventSetter Event="Drop" Handler="TagButton_Drop" />
             <EventSetter Event="PreviewDragOver" Handler="TagButton_PreviewDragOver" />
@@ -45,7 +48,25 @@
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
         </Style>
         <DataTemplate x:Key="ImageTileTemplate" DataType="{x:Type vm:ImageItemViewModel}">
-            <Border Background="#FAFAF7" BorderBrush="#DDD7CE" BorderThickness="1" CornerRadius="6" Padding="8">
+            <Border Background="#FAFAF7" CornerRadius="6" Padding="8"
+                    MouseRightButtonUp="ImageTile_RightClick"
+                    ToolTip="{Binding TagIssueMessage}">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="BorderBrush" Value="#DDD7CE" />
+                        <Setter Property="BorderThickness" Value="1" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasIncompleteTags}" Value="True">
+                                <Setter Property="BorderBrush" Value="#B7791F" />
+                                <Setter Property="BorderThickness" Value="2" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding HasInvalidTags}" Value="True">
+                                <Setter Property="BorderBrush" Value="#B42318" />
+                                <Setter Property="BorderThickness" Value="2" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="122" />
@@ -64,23 +85,50 @@
                     <TextBlock Grid.Row="3" Margin="0,4,0,0" Text="{Binding ProposedFileName}" TextWrapping="Wrap"
                                Foreground="#245C37" MaxHeight="34" />
                     <StackPanel Grid.Row="4" Orientation="Vertical" Margin="0,4,0,0">
-                        <TextBlock Text="Changed" Foreground="#8A4D00" FontWeight="SemiBold">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsDirty}" Value="True">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
+                        <DockPanel>
+                            <TextBlock Text="!" Foreground="#B42318" FontWeight="Bold" Margin="0,0,6,0"
+                                       ToolTip="{Binding TagIssueMessage}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasRenameBlockingIssue}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="Changed" Foreground="#8A4D00" FontWeight="SemiBold">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsDirty}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </DockPanel>
                         <TextBlock Text="{Binding PreviewError}" Foreground="#9C1F1F" TextWrapping="Wrap" MaxHeight="34" />
                     </StackPanel>
                 </Grid>
             </Border>
         </DataTemplate>
+        <Style x:Key="StatusBorder" TargetType="Border">
+            <Setter Property="Background" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#D7D3CA" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsStatusWarning}" Value="True">
+                    <Setter Property="Background" Value="#FFF1F0" />
+                    <Setter Property="BorderBrush" Value="#B42318" />
+                    <Setter Property="BorderThickness" Value="2" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="14">
@@ -157,10 +205,7 @@
                                                     Command="{Binding DataContext.ApplyTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}"
                                                     ToolTip="{Binding Group}">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding Group}" FontSize="10" Foreground="#666666" />
-                                                </StackPanel>
+                                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextAlignment="Center" />
                                             </Button>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
@@ -179,6 +224,7 @@
                                      Background="Transparent"
                                      SelectionChanged="LibraryList_SelectionChanged"
                                      PreviewMouseLeftButtonDown="ImageList_PreviewMouseLeftButtonDown"
+                                     PreviewMouseLeftButtonUp="ImageList_PreviewMouseLeftButtonUp"
                                      MouseMove="ImageList_MouseMove"
                                      KeyDown="LibraryList_KeyDown"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -218,6 +264,11 @@
                                         <TextBlock Text="{Binding PreviewError}" TextWrapping="Wrap" Foreground="#9C1F1F" />
                                     </StackPanel>
                                     <Separator Margin="0,12" />
+                                    <WrapPanel Margin="0,0,0,12">
+                                        <Button Style="{StaticResource ToolButton}" Margin="0,0,6,6" Content="Clear Selected Temporary Tags" Command="{Binding ClearSelectedTemporaryTagsCommand}" />
+                                        <Button Style="{StaticResource ToolButton}" Margin="0,0,6,6" Content="Clear All Temporary Tags" Command="{Binding ClearAllTemporaryTagsCommand}" />
+                                    </WrapPanel>
+                                    <Separator Margin="0,0,0,12" />
                                     <TextBlock Text="{Binding RenameBlockReason}" TextWrapping="Wrap" Foreground="#555555" />
                                 </StackPanel>
                             </ScrollViewer>
@@ -236,16 +287,16 @@
                     <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,10">
                         <WrapPanel VerticalAlignment="Center">
                             <TextBlock Text="Pass" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,6,0" />
-                            <ComboBox Width="170" ItemsSource="{Binding BucketPasses}" SelectedItem="{Binding SelectedBucketPass}" />
+                            <ComboBox Width="170" VerticalContentAlignment="Center" ItemsSource="{Binding BucketPasses}" SelectedItem="{Binding SelectedBucketPass}" />
                             <TextBlock Text="Filter" VerticalAlignment="Center" FontWeight="SemiBold" Margin="16,0,6,0" />
-                            <ComboBox Width="130" ItemsSource="{Binding BucketFilterModes}" SelectedItem="{Binding SelectedBucketFilter}" />
+                            <ComboBox Width="130" VerticalContentAlignment="Center" ItemsSource="{Binding BucketFilterModes}" SelectedItem="{Binding SelectedBucketFilter}" />
                             <TextBlock Text="Page size" VerticalAlignment="Center" FontWeight="SemiBold" Margin="16,0,6,0" />
-                            <ComboBox Width="80" ItemsSource="{Binding BucketPageSizes}" SelectedItem="{Binding BucketPageSize}" />
+                            <ComboBox Width="80" VerticalContentAlignment="Center" ItemsSource="{Binding BucketPageSizes}" SelectedItem="{Binding BucketPageSize}" />
                             <Button Style="{StaticResource ToolButton}" Content="Previous" Command="{Binding PreviousBucketPageCommand}" />
                             <TextBlock Text="{Binding BucketPageText}" VerticalAlignment="Center" Margin="10,0" />
                             <Button Style="{StaticResource ToolButton}" Content="Next" Command="{Binding NextBucketPageCommand}" />
                             <TextBlock Text="Default" VerticalAlignment="Center" FontWeight="SemiBold" Margin="16,0,6,0" />
-                            <ComboBox Width="130" ItemsSource="{Binding BucketBuckets}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SelectedDefaultBucketValue}" />
+                            <ComboBox Width="130" VerticalContentAlignment="Center" ItemsSource="{Binding BucketBuckets}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SelectedDefaultBucketValue}" />
                             <Button Style="{StaticResource ToolButton}" Content="Apply default to current page" Command="{Binding ApplyDefaultToPageCommand}" />
                             <Button Style="{StaticResource ToolButton}" Content="Invert Selection" Command="{Binding InvertBucketSelectionCommand}" />
                             <Button Style="{StaticResource ToolButton}" Content="Select Untagged Page" Command="{Binding SelectUntaggedBucketCommand}" />
@@ -269,7 +320,7 @@
                                                 <Button Style="{StaticResource BucketButton}"
                                                         Command="{Binding DataContext.ApplyBucketCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                         CommandParameter="{Binding}">
-                                                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextAlignment="Center" />
                                                 </Button>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
@@ -293,6 +344,7 @@
                                          Background="Transparent"
                                          SelectionChanged="BucketList_SelectionChanged"
                                          PreviewMouseLeftButtonDown="ImageList_PreviewMouseLeftButtonDown"
+                                         PreviewMouseLeftButtonUp="ImageList_PreviewMouseLeftButtonUp"
                                          MouseMove="ImageList_MouseMove"
                                          KeyDown="BucketList_KeyDown"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -319,6 +371,10 @@
                                 <TextBlock Text="Ctrl+click, Shift+click, arrow keys, Ctrl+A, and Escape work in the current page." TextWrapping="Wrap" Foreground="#555555" />
                                 <Separator Margin="0,12" />
                                 <TextBlock Text="Partial bucket tags are saved as work-in-progress app data outside the image folder and outside the repository." TextWrapping="Wrap" />
+                                <Separator Margin="0,12" />
+                                <Button Style="{StaticResource ToolButton}" Margin="0,0,0,6" Content="Clear Selected Temporary Tags" Command="{Binding ClearSelectedTemporaryTagsCommand}" />
+                                <Button Style="{StaticResource ToolButton}" Margin="0,0,0,6" Content="Clear Current Bucket Pass Tags" Command="{Binding ClearCurrentBucketPassTagsCommand}" />
+                                <Button Style="{StaticResource ToolButton}" Margin="0,0,0,6" Content="Clear All Temporary Tags" Command="{Binding ClearAllTemporaryTagsCommand}" />
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -326,7 +382,7 @@
             </TabItem>
         </TabControl>
 
-        <Border Grid.Row="2" Margin="0,12,0,0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="10">
+        <Border Grid.Row="2" Margin="0,12,0,0" Style="{StaticResource StatusBorder}" CornerRadius="6" Padding="10">
             <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
         </Border>
     </Grid>

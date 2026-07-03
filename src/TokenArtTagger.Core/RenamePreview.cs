@@ -5,6 +5,8 @@ public sealed record RenamePreview(IReadOnlyList<RenamePreviewEntry> Entries)
     public bool CanRename => Entries.Count > 0 && Entries.All(entry => entry.CanRename);
 }
 
+public sealed record RenamePreviewProgress(int Completed, int Total, string CurrentFileName);
+
 public sealed record RenamePreviewEntry(
     ImageItem Item,
     string? ContentHash,

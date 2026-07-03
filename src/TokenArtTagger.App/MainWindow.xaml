@@ -58,8 +58,11 @@
                      Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" />
             <StackPanel Grid.Column="3" Orientation="Horizontal">
                 <Button Style="{StaticResource ToolButton}" Content="Scan Folder" Command="{Binding ScanCommand}" />
-                <Button Style="{StaticResource ToolButton}" Content="Preview Rename Batch" Command="{Binding PreviewRenameCommand}" />
-                <Button Style="{StaticResource ToolButton}" Content="Rename Selected" Command="{Binding RenameSelectedCommand}" />
+                <Button Style="{StaticResource ToolButton}" Content="Preview Selected" Command="{Binding PreviewRenameCommand}" />
+                <Button Style="{StaticResource ToolButton}" Content="Preview Changed" Command="{Binding PreviewChangedCommand}" />
+                <Button Style="{StaticResource ToolButton}" Content="Cancel Preview" Command="{Binding CancelPreviewCommand}" />
+                <Button Style="{StaticResource ToolButton}" Content="Rename Selected" Command="{Binding RenameSelectedCommand}"
+                        ToolTip="{Binding RenameBlockReason}" />
                 <Button Style="{StaticResource ToolButton}" Content="Undo Last Batch" Command="{Binding UndoLastBatchCommand}" />
             </StackPanel>
         </Grid>
@@ -75,7 +78,29 @@
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="Tags" Style="{StaticResource PanelTitle}" />
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding TagButtons}">
+                        <ItemsControl ItemsSource="{Binding TagButtonsView}">
+                            <ItemsControl.GroupStyle>
+                                <GroupStyle>
+                                    <GroupStyle.ContainerStyle>
+                                        <Style TargetType="{x:Type GroupItem}">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="{x:Type GroupItem}">
+                                                        <GroupBox Header="{Binding Name}" Margin="0,0,0,10" Padding="8">
+                                                            <ItemsPresenter />
+                                                        </GroupBox>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </GroupStyle.ContainerStyle>
+                                    <GroupStyle.Panel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </GroupStyle.Panel>
+                                </GroupStyle>
+                            </ItemsControl.GroupStyle>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:TagButtonViewModel}">
                                     <Button Style="{StaticResource TagButton}"
@@ -89,11 +114,6 @@
                                     </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <WrapPanel />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
                         </ItemsControl>
                     </ScrollViewer>
                 </DockPanel>
@@ -108,18 +128,22 @@
                              BorderThickness="0"
                              Background="Transparent"
                              SelectionChanged="ThumbnailList_SelectionChanged"
-                             PreviewMouseMove="ThumbnailList_PreviewMouseMove"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                             PreviewMouseLeftButtonDown="ThumbnailList_PreviewMouseLeftButtonDown"
+                             MouseMove="ThumbnailList_MouseMove"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.CanContentScroll="True"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <WrapPanel />
+                                <VirtualizingStackPanel />
                             </ItemsPanelTemplate>
                         </ListBox.ItemsPanel>
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
-                                <Setter Property="Width" Value="192" />
-                                <Setter Property="Height" Value="268" />
-                                <Setter Property="Margin" Value="5" />
+                                <Setter Property="MinHeight" Value="122" />
+                                <Setter Property="Margin" Value="0,0,0,8" />
                                 <Setter Property="Padding" Value="0" />
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             </Style>
@@ -128,20 +152,17 @@
                             <DataTemplate DataType="{x:Type vm:ImageItemViewModel}">
                                 <Border Background="#FAFAF7" BorderBrush="#DDD7CE" BorderThickness="1" CornerRadius="6" Padding="8">
                                     <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="142" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="*" />
-                                        </Grid.RowDefinitions>
-                                        <Border Grid.Row="0" Background="#E8E5DE" CornerRadius="4">
-                                            <Image Source="{Binding Thumbnail}" Stretch="Uniform" />
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="116" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="#E8E5DE" CornerRadius="4" Width="104" Height="104">
+                                            <Image Source="{Binding Thumbnail}" Stretch="Uniform" Loaded="ThumbnailImage_Loaded" />
                                         </Border>
-                                        <TextBlock Grid.Row="1" Margin="0,8,0,0" Text="{Binding FileName}" TextWrapping="Wrap" FontWeight="SemiBold" />
-                                        <TextBlock Grid.Row="2" Margin="0,4,0,0" Text="{Binding CurrentTagsText}" TextWrapping="Wrap" Foreground="#464646" />
-                                        <TextBlock Grid.Row="3" Margin="0,4,0,0" Text="{Binding ProposedFileName}" TextWrapping="Wrap" Foreground="#245C37" />
-                                        <StackPanel Grid.Row="4" Orientation="Vertical" Margin="0,6,0,0">
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding FileName}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                                            <TextBlock Margin="0,4,0,0" Text="{Binding CurrentTagsText}" TextWrapping="Wrap" Foreground="#464646" />
+                                            <TextBlock Margin="0,4,0,0" Text="{Binding ProposedFileName}" TextWrapping="Wrap" Foreground="#245C37" />
                                             <TextBlock Text="Changed" Foreground="#8A4D00" FontWeight="SemiBold">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
@@ -180,6 +201,8 @@
                             <TextBlock Text="Proposed filename" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding ProposedFileName}" TextWrapping="Wrap" Margin="0,4,0,12" Foreground="#245C37" />
                             <TextBlock Text="{Binding PreviewError}" TextWrapping="Wrap" Foreground="#9C1F1F" />
+                            <Separator Margin="0,12" />
+                            <TextBlock Text="{Binding DataContext.RenameBlockReason, RelativeSource={RelativeSource AncestorType=Window}}" TextWrapping="Wrap" Foreground="#555555" />
                         </StackPanel>
                     </ScrollViewer>
                 </DockPanel>

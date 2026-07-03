@@ -4,7 +4,7 @@
 
 - SQLite database for persistent image records and rename history.
 - Freeform tags beyond the fixed v0.1 schema.
-- Persistent thumbnail cache outside the image library.
+- Thumbnail cache management UI, including cache size display and manual clear.
 - Duplicate detection using exact content hashes.
 - Perceptual hash similar-image search.
 - Richer search/filter UI with tag facets and missing-tag filters.

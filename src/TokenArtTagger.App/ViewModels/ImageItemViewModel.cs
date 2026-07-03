@@ -29,6 +29,18 @@ public sealed class ImageItemViewModel : ViewModelBase
 
     public bool IsDirty => _item.IsDirty;
 
+    public TagIssueResult TagIssue => TokenArtTagger.Core.TagIssue.Evaluate(_item.CurrentTags);
+
+    public bool HasIncompleteTags => TagIssue.Kind == TagIssueKind.Incomplete;
+
+    public bool HasInvalidTags => TagIssue.Kind == TagIssueKind.Invalid;
+
+    public bool HasRenameBlockingIssue => HasIncompleteTags || HasInvalidTags || !string.IsNullOrWhiteSpace(PreviewError);
+
+    public string TagIssueMessage => string.IsNullOrWhiteSpace(PreviewError)
+        ? TagIssue.Message
+        : PreviewError;
+
     public ImageSource? Thumbnail
     {
         get => _thumbnail;
@@ -44,7 +56,14 @@ public sealed class ImageItemViewModel : ViewModelBase
     public string? PreviewError
     {
         get => _previewError;
-        set => SetProperty(ref _previewError, value);
+        set
+        {
+            if (SetProperty(ref _previewError, value))
+            {
+                OnPropertyChanged(nameof(HasRenameBlockingIssue));
+                OnPropertyChanged(nameof(TagIssueMessage));
+            }
+        }
     }
 
     public void ApplyTag(string category, string value)
@@ -63,6 +82,11 @@ public sealed class ImageItemViewModel : ViewModelBase
         OnPropertyChanged(nameof(ParsedTagsText));
         OnPropertyChanged(nameof(CurrentTagsText));
         OnPropertyChanged(nameof(IsDirty));
+        OnPropertyChanged(nameof(TagIssue));
+        OnPropertyChanged(nameof(HasIncompleteTags));
+        OnPropertyChanged(nameof(HasInvalidTags));
+        OnPropertyChanged(nameof(HasRenameBlockingIssue));
+        OnPropertyChanged(nameof(TagIssueMessage));
     }
 
     public void ApplyPreview(RenamePreviewEntry? entry)

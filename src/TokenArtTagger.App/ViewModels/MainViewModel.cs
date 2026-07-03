@@ -17,6 +17,8 @@ public sealed class MainViewModel : ViewModelBase
     private string _filterText = string.Empty;
     private string _statusMessage = "Choose a folder to begin.";
     private string _renameBlockReason = "Select one or more images before previewing or renaming.";
+    private bool _isStatusWarning;
+    private int _statusWarningGeneration;
     private RenamePreview? _lastPreview;
     private RenamePreviewScope? _lastPreviewScope;
     private CancellationTokenSource? _previewCancellation;
@@ -48,9 +50,12 @@ public sealed class MainViewModel : ViewModelBase
         PreviewChangedCommand = new AsyncRelayCommand(_ => PreviewRenameAsync(RenamePreviewScope.Changed), _ => Items.Any(item => item.IsDirty));
         CancelPreviewCommand = new RelayCommand(_ => CancelPreview(), _ => _previewCancellation is not null);
         RenameSelectedCommand = new AsyncRelayCommand(_ => RenameSelectedAsync(), _ => RenameReadiness.Evaluate(CurrentSelectedItems()).CanPreview);
-        UndoLastBatchCommand = new RelayCommand(_ => StatusMessage = $"Undo is not implemented in {AppInfo.Version}. Use the JSON undo log for manual recovery.");
+        UndoLastBatchCommand = new RelayCommand(_ => SetStatus($"Undo is not implemented in {AppInfo.Version}. Use the JSON undo log for manual recovery.", isWarning: true));
         ApplyBucketCommand = new RelayCommand(parameter => ApplyBucket((BucketDefinitionViewModel)parameter!), parameter => parameter is BucketDefinitionViewModel);
         ApplyDefaultToPageCommand = new RelayCommand(_ => ApplyDefaultToCurrentPage(), _ => BucketPageItems.Count > 0 && SelectedDefaultBucketValue is not null);
+        ClearSelectedTemporaryTagsCommand = new RelayCommand(_ => ClearSelectedTemporaryTags(), _ => SelectedItems.Count > 0);
+        ClearCurrentBucketPassTagsCommand = new RelayCommand(_ => ClearCurrentBucketPassTags(), _ => Items.Count > 0);
+        ClearAllTemporaryTagsCommand = new RelayCommand(_ => ClearAllTemporaryTags(), _ => Items.Any(item => item.IsDirty));
         NextBucketPageCommand = new RelayCommand(_ => MoveBucketPage(1), _ => BucketPageIndex + 1 < BucketPageCount);
         PreviousBucketPageCommand = new RelayCommand(_ => MoveBucketPage(-1), _ => BucketPageIndex > 0);
         InvertBucketSelectionCommand = new RelayCommand(_ => RequestBucketSelectionAction?.Invoke(BucketSelectionAction.Invert), _ => BucketPageItems.Count > 0);
@@ -129,6 +134,12 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _statusMessage;
         set => SetProperty(ref _statusMessage, value);
+    }
+
+    public bool IsStatusWarning
+    {
+        get => _isStatusWarning;
+        private set => SetProperty(ref _isStatusWarning, value);
     }
 
     public string RenameBlockReason
@@ -221,6 +232,12 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand ApplyDefaultToPageCommand { get; }
 
+    public RelayCommand ClearSelectedTemporaryTagsCommand { get; }
+
+    public RelayCommand ClearCurrentBucketPassTagsCommand { get; }
+
+    public RelayCommand ClearAllTemporaryTagsCommand { get; }
+
     public RelayCommand NextBucketPageCommand { get; }
 
     public RelayCommand PreviousBucketPageCommand { get; }
@@ -231,7 +248,7 @@ public sealed class MainViewModel : ViewModelBase
 
     public async Task ScanAsync()
     {
-        StatusMessage = "Scanning...";
+        SetStatus("Scanning...");
         _lastPreview = null;
         _lastPreviewScope = null;
         Items.Clear();
@@ -249,9 +266,13 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         RefreshBucketPage();
-        StatusMessage = result.Errors.Count == 0
-            ? $"Scanned {Items.Count} images."
-            : $"Scanned {Items.Count} images with {result.Errors.Count} errors.";
+        var legacyUndoWarning = UndoLogService.HasLegacyUndoFolder(FolderPath)
+            ? $" Legacy undo folder found at {UndoLogService.LegacyUndoFolderName}; new undo logs now go to app data."
+            : string.Empty;
+        SetStatus(result.Errors.Count == 0
+            ? $"Scanned {Items.Count} images.{legacyUndoWarning}"
+            : $"Scanned {Items.Count} images with {result.Errors.Count} errors.{legacyUndoWarning}",
+            isWarning: result.Errors.Count > 0 || legacyUndoWarning.Length > 0);
         UpdateRenameReadiness();
         RaiseCommandStates();
     }
@@ -288,12 +309,12 @@ public sealed class MainViewModel : ViewModelBase
     {
         if (SelectedItems.Count == 0)
         {
-            StatusMessage = "Select one or more images before applying a tag.";
+            SetStatus("Select one or more images before applying a tag.", isWarning: true);
             return;
         }
 
         var message = ApplyTagTo(SelectedItems, tag.Category, tag.Value);
-        StatusMessage = message ?? $"Applied {tag.Value} to {SelectedItems.Count} selected image(s).";
+        SetStatus(message ?? $"Applied {tag.Value} to {SelectedItems.Count} selected image(s).", message is not null);
         UpdateAfterTagsChanged();
     }
 
@@ -317,14 +338,14 @@ public sealed class MainViewModel : ViewModelBase
         var readiness = RenameReadiness.Evaluate(targets);
         if (!readiness.CanPreview)
         {
-            StatusMessage = readiness.Message;
+            SetStatus(readiness.Message, isWarning: true);
             RenameBlockReason = readiness.Message;
             RaiseCommandStates();
             return;
         }
 
         var label = scope == RenamePreviewScope.Selected ? "selected" : "changed";
-        StatusMessage = $"Building rename preview for {targets.Count} {label} image(s)...";
+        SetStatus($"Building rename preview for {targets.Count} {label} image(s)...");
         foreach (var item in Items)
         {
             item.ApplyPreview(null);
@@ -335,7 +356,7 @@ public sealed class MainViewModel : ViewModelBase
         CancelPreviewCommand.RaiseCanExecuteChanged();
         var progress = new Progress<RenamePreviewProgress>(step =>
         {
-            StatusMessage = $"Hashing {step.Completed}/{step.Total}: {step.CurrentFileName}";
+            SetStatus($"Hashing {step.Completed}/{step.Total}: {step.CurrentFileName}");
         });
 
         try
@@ -345,7 +366,7 @@ public sealed class MainViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
-            StatusMessage = "Rename preview canceled.";
+            SetStatus("Rename preview canceled.");
             _lastPreview = null;
             _lastPreviewScope = null;
             return;
@@ -363,9 +384,10 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         var errors = _lastPreview.Entries.Count(entry => !entry.CanRename);
-        StatusMessage = errors == 0
+        SetStatus(errors == 0
             ? $"Preview ready for {_lastPreview.Entries.Count} {label} image(s)."
-            : $"Preview found {errors} issue(s). Fix missing tags or conflicts before renaming.";
+            : $"Preview found {errors} issue(s). Fix missing tags or conflicts before renaming.",
+            isWarning: errors > 0);
         RenameBlockReason = _lastPreview.CanRename ? "Ready to rename selected preview." : "Preview has issues.";
         RaiseCommandStates();
     }
@@ -377,7 +399,7 @@ public sealed class MainViewModel : ViewModelBase
             await PreviewRenameAsync(RenamePreviewScope.Selected);
             if (_lastPreview?.CanRename == true)
             {
-                StatusMessage = "Preview ready. Review the proposed filenames, then click Rename Selected again to confirm.";
+                SetStatus("Preview ready. Review the proposed filenames, then click Rename Selected again to confirm.");
             }
 
             return;
@@ -391,7 +413,7 @@ public sealed class MainViewModel : ViewModelBase
 
         if (confirmation != MessageBoxResult.Yes)
         {
-            StatusMessage = "Rename canceled.";
+            SetStatus("Rename canceled.");
             return;
         }
 
@@ -399,10 +421,11 @@ public sealed class MainViewModel : ViewModelBase
             .Where(entry => entry.CanRename && entry.ProposedPath is not null)
             .Select(entry => entry.ProposedPath!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var result = await FileRenamer.RenameAsync(_lastPreview, FolderPath);
-        StatusMessage = result.Errors.Count == 0
+        var result = await FileRenamer.RenameAsync(_lastPreview, UndoLogService.DefaultUndoLogFolder());
+        SetStatus(result.Errors.Count == 0
             ? $"Renamed {result.RenamedCount} file(s). Undo log: {result.UndoLogPath}"
-            : $"Renamed {result.RenamedCount} file(s) with {result.Errors.Count} error(s). Undo log: {result.UndoLogPath}";
+            : $"Renamed {result.RenamedCount} file(s) with {result.Errors.Count} error(s). Undo log: {result.UndoLogPath}",
+            isWarning: result.Errors.Count > 0);
 
         await ScanAsync();
         var stillSelected = Items.Where(item => renamedPaths.Contains(item.FullPath)).ToList();
@@ -413,12 +436,12 @@ public sealed class MainViewModel : ViewModelBase
     {
         if (BucketSelectedItems.Count == 0)
         {
-            StatusMessage = "Select one or more bucket images before applying a bucket.";
+            SetStatus("Select one or more bucket images before applying a bucket.", isWarning: true);
             return;
         }
 
         var message = ApplyTagTo(BucketSelectedItems, bucket.Category, bucket.Value);
-        StatusMessage = message ?? $"Applied {bucket.Category}={bucket.Value} to {BucketSelectedItems.Count} image(s).";
+        SetStatus(message ?? $"Applied {bucket.Category}={bucket.Value} to {BucketSelectedItems.Count} image(s).", message is not null);
         UpdateAfterTagsChanged();
     }
 
@@ -436,7 +459,7 @@ public sealed class MainViewModel : ViewModelBase
 
         if (preview.ChangedCount == 0)
         {
-            StatusMessage = "No remaining unassigned images on this page.";
+            SetStatus("No remaining unassigned images on this page.", isWarning: true);
             return;
         }
 
@@ -448,7 +471,7 @@ public sealed class MainViewModel : ViewModelBase
 
         if (confirmation != MessageBoxResult.Yes)
         {
-            StatusMessage = "Default-to-page canceled.";
+            SetStatus("Default-to-page canceled.");
             return;
         }
 
@@ -457,8 +480,78 @@ public sealed class MainViewModel : ViewModelBase
             Items.FirstOrDefault(item => item.FullPath == updated.FullPath)?.ReplaceItem(updated);
         }
 
-        StatusMessage = $"Applied {SelectedDefaultBucketValue} to {preview.ChangedCount} remaining image(s) on this page.";
+        SetStatus($"Applied {SelectedDefaultBucketValue} to {preview.ChangedCount} remaining image(s) on this page.");
         UpdateAfterTagsChanged();
+    }
+
+    private void ClearSelectedTemporaryTags()
+    {
+        if (SelectedItems.Count == 0)
+        {
+            SetStatus("Select one or more images before clearing temporary tags.", isWarning: true);
+            return;
+        }
+
+        ResetViewModels(TemporaryTagReset.Reset(CurrentSelectedItems()));
+        SetStatus($"Cleared temporary tags from {SelectedItems.Count} selected image(s).");
+        UpdateAfterTagsChanged();
+    }
+
+    private void ClearCurrentBucketPassTags()
+    {
+        var targets = TemporaryTagReset.ResetCurrentPass(CurrentAllItems(), SelectedBucketPass.Pass, SelectedBucketFilter);
+        if (targets.Count == 0)
+        {
+            SetStatus("No temporary tags match the current bucket pass and filter.", isWarning: true);
+            return;
+        }
+
+        if (!ConfirmReset($"Clear temporary tags for {targets.Count} image(s) in the current bucket pass?"))
+        {
+            SetStatus("Clear bucket pass canceled.");
+            return;
+        }
+
+        ResetViewModels(targets);
+        SetStatus($"Cleared temporary tags from {targets.Count} current bucket pass image(s).");
+        UpdateAfterTagsChanged();
+    }
+
+    private void ClearAllTemporaryTags()
+    {
+        var dirtyItems = Items.Where(item => item.IsDirty).Select(item => item.Item).ToList();
+        if (dirtyItems.Count == 0)
+        {
+            SetStatus("There are no temporary tags to clear.", isWarning: true);
+            return;
+        }
+
+        if (!ConfirmReset($"Clear all temporary tags for {dirtyItems.Count} changed image(s) in the current library?"))
+        {
+            SetStatus("Clear all temporary tags canceled.");
+            return;
+        }
+
+        ResetViewModels(TemporaryTagReset.Reset(dirtyItems));
+        SetStatus($"Cleared all temporary tags from {dirtyItems.Count} image(s).");
+        UpdateAfterTagsChanged();
+    }
+
+    private static bool ConfirmReset(string message)
+    {
+        return System.Windows.MessageBox.Show(
+            $"{message}\n\nImage files will not be changed. Parsed filename tags will still appear.",
+            "Clear Temporary Tags",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning) == MessageBoxResult.Yes;
+    }
+
+    private void ResetViewModels(IEnumerable<ImageItem> updatedItems)
+    {
+        foreach (var updated in updatedItems)
+        {
+            Items.FirstOrDefault(item => item.FullPath == updated.FullPath)?.ReplaceItem(updated);
+        }
     }
 
     private string? ApplyTagTo(IEnumerable<ImageItemViewModel> items, string category, string value)
@@ -544,6 +637,11 @@ public sealed class MainViewModel : ViewModelBase
         return BucketWorkingSet.Filter([item.Item], SelectedBucketPass.Pass, BucketFilterMode.MissingOnly).Count > 0;
     }
 
+    public void ShowWarning(string message)
+    {
+        SetStatus(message, isWarning: true);
+    }
+
     private async Task<Dictionary<string, WorkInProgressTagRecord>> LoadWorkInProgressMapAsync()
     {
         var records = await _workInProgressStore.LoadAsync();
@@ -580,7 +678,14 @@ public sealed class MainViewModel : ViewModelBase
             }
         }
 
-        await _workInProgressStore.SaveAsync(records);
+        if (records.Count == 0)
+        {
+            await _workInProgressStore.ClearAsync();
+        }
+        else
+        {
+            await _workInProgressStore.SaveAsync(records);
+        }
     }
 
     private void BrowseFolder()
@@ -623,6 +728,9 @@ public sealed class MainViewModel : ViewModelBase
         CancelPreviewCommand.RaiseCanExecuteChanged();
         RenameSelectedCommand.RaiseCanExecuteChanged();
         ApplyDefaultToPageCommand.RaiseCanExecuteChanged();
+        ClearSelectedTemporaryTagsCommand.RaiseCanExecuteChanged();
+        ClearCurrentBucketPassTagsCommand.RaiseCanExecuteChanged();
+        ClearAllTemporaryTagsCommand.RaiseCanExecuteChanged();
         NextBucketPageCommand.RaiseCanExecuteChanged();
         PreviousBucketPageCommand.RaiseCanExecuteChanged();
         InvertBucketSelectionCommand.RaiseCanExecuteChanged();
@@ -643,6 +751,32 @@ public sealed class MainViewModel : ViewModelBase
     {
         var readiness = RenameReadiness.Evaluate(CurrentSelectedItems());
         RenameBlockReason = readiness.CanPreview ? "Ready to preview selected images." : readiness.Message;
+    }
+
+    private void SetStatus(string message, bool isWarning = false)
+    {
+        StatusMessage = message;
+        if (!isWarning)
+        {
+            IsStatusWarning = false;
+            return;
+        }
+
+        IsStatusWarning = true;
+        var generation = ++_statusWarningGeneration;
+        _ = ClearStatusWarningAsync(generation);
+    }
+
+    private async Task ClearStatusWarningAsync(int generation)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            if (generation == _statusWarningGeneration)
+            {
+                IsStatusWarning = false;
+            }
+        });
     }
 }
 

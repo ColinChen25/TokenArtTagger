@@ -1,8 +1,12 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using TokenArtTagger.Core;
 using TokenArtTagger.App.ViewModels;
 
 namespace TokenArtTagger.App;
@@ -10,6 +14,14 @@ namespace TokenArtTagger.App;
 public partial class MainWindow : Window
 {
     private System.Windows.Point _dragStartPoint;
+    private System.Windows.Point _rectangleStartPoint;
+    private System.Windows.Controls.ListBox? _rectangleList;
+    private bool _isRectangleSelecting;
+    private RubberBandAdorner? _rubberBandAdorner;
+    private AdornerLayer? _rubberBandLayer;
+    private System.Windows.Point? _inspectorPanStart;
+    private double _inspectorPanStartX;
+    private double _inspectorPanStartY;
 
     public MainWindow()
     {
@@ -33,12 +45,33 @@ public partial class MainWindow : Window
     {
         if (sender is System.Windows.Controls.ListBox list)
         {
+            list.Focus();
             _dragStartPoint = e.GetPosition(list);
+            if (IsFromScrollBar(e.OriginalSource as DependencyObject) ||
+                FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not null)
+            {
+                return;
+            }
+
+            _rectangleList = list;
+            _rectangleStartPoint = _dragStartPoint;
+            _isRectangleSelecting = true;
+            _rubberBandLayer = AdornerLayer.GetAdornerLayer(list);
+            _rubberBandAdorner = new RubberBandAdorner(list);
+            _rubberBandLayer?.Add(_rubberBandAdorner);
+            list.CaptureMouse();
+            e.Handled = true;
         }
     }
 
     private void ImageList_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        if (_isRectangleSelecting)
+        {
+            UpdateRubberBand(e.GetPosition(_rectangleList ?? (System.Windows.Controls.ListBox)sender));
+            return;
+        }
+
         if (sender is not System.Windows.Controls.ListBox list ||
             e.LeftButton != MouseButtonState.Pressed ||
             list.SelectedItems.Count == 0 ||
@@ -56,6 +89,53 @@ public partial class MainWindow : Window
         }
 
         DragDrop.DoDragDrop(list, "selected-images", System.Windows.DragDropEffects.Copy);
+    }
+
+    private void ImageList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isRectangleSelecting || _rectangleList is null)
+        {
+            return;
+        }
+
+        var list = _rectangleList;
+        var endPoint = e.GetPosition(list);
+        RemoveRubberBand();
+        _isRectangleSelecting = false;
+        _rectangleList = null;
+        list.ReleaseMouseCapture();
+
+        if (Math.Abs(endPoint.X - _rectangleStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(endPoint.Y - _rectangleStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        SelectByRectangle(list, _rectangleStartPoint, endPoint, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        e.Handled = true;
+    }
+
+    private void UpdateRubberBand(System.Windows.Point endPoint)
+    {
+        if (_rubberBandAdorner is null)
+        {
+            return;
+        }
+
+        _rubberBandAdorner.SelectionBounds = new Rect(_rectangleStartPoint, endPoint);
+        _rubberBandAdorner.InvalidateVisual();
+    }
+
+    private void RemoveRubberBand()
+    {
+        if (_rubberBandLayer is not null && _rubberBandAdorner is not null)
+        {
+            _rubberBandLayer.Remove(_rubberBandAdorner);
+        }
+
+        _rubberBandLayer = null;
+        _rubberBandAdorner = null;
     }
 
     private void LibraryList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -80,6 +160,21 @@ public partial class MainWindow : Window
     private void BucketList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         LibraryList_KeyDown(sender, e);
+    }
+
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != Key.A ||
+            !Keyboard.Modifiers.HasFlag(ModifierKeys.Control) ||
+            Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox)
+        {
+            return;
+        }
+
+        var list = BucketList.IsVisible ? BucketList : LibraryList;
+        list.Focus();
+        list.SelectAll();
+        e.Handled = true;
     }
 
     private async void ThumbnailImage_Loaded(object sender, RoutedEventArgs e)
@@ -109,6 +204,18 @@ public partial class MainWindow : Window
             ViewModel.ApplyBucketCommand.Execute(bucket);
         }
 
+        e.Handled = true;
+    }
+
+    private void ImageTile_RightClick(object sender, MouseButtonEventArgs e)
+    {
+        var item = FindDataContext<ImageItemViewModel>(e.OriginalSource as DependencyObject);
+        if (item is null)
+        {
+            return;
+        }
+
+        OpenImageInspector(item);
         e.Handled = true;
     }
 
@@ -144,6 +251,135 @@ public partial class MainWindow : Window
         }
     }
 
+    private void SelectByRectangle(System.Windows.Controls.ListBox list, System.Windows.Point start, System.Windows.Point end, bool toggle)
+    {
+        var selection = new SelectionRectangle(start.X, start.Y, end.X - start.X, end.Y - start.Y);
+        var tiles = new List<SelectionTile<ImageItemViewModel>>();
+        foreach (var item in list.Items.Cast<ImageItemViewModel>())
+        {
+            if (list.ItemContainerGenerator.ContainerFromItem(item) is not ListBoxItem container)
+            {
+                continue;
+            }
+
+            var bounds = container.TransformToAncestor(list).TransformBounds(new Rect(0, 0, container.ActualWidth, container.ActualHeight));
+            tiles.Add(new SelectionTile<ImageItemViewModel>(
+                item,
+                new SelectionRectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height)));
+        }
+
+        var selected = RectangleSelection.Intersecting(tiles, selection);
+        if (!toggle)
+        {
+            list.SelectedItems.Clear();
+        }
+
+        foreach (var item in selected)
+        {
+            if (toggle && list.SelectedItems.Contains(item))
+            {
+                list.SelectedItems.Remove(item);
+            }
+            else if (!list.SelectedItems.Contains(item))
+            {
+                list.SelectedItems.Add(item);
+            }
+        }
+    }
+
+    private void OpenImageInspector(ImageItemViewModel item)
+    {
+        try
+        {
+            var source = LoadInspectorImage(item.FullPath);
+            var scale = new ScaleTransform(1, 1);
+            var translate = new TranslateTransform();
+            var transforms = new TransformGroup();
+            transforms.Children.Add(scale);
+            transforms.Children.Add(translate);
+
+            var image = new System.Windows.Controls.Image
+            {
+                Source = source,
+                Stretch = Stretch.Uniform,
+                RenderTransform = transforms,
+                RenderTransformOrigin = new System.Windows.Point(0.5, 0.5)
+            };
+            var host = new Grid
+            {
+                Background = System.Windows.Media.Brushes.Black,
+                ClipToBounds = true
+            };
+            host.Children.Add(image);
+
+            var window = new Window
+            {
+                Owner = this,
+                Title = item.FileName,
+                Content = host,
+                Width = 900,
+                Height = 700,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            window.KeyDown += (_, args) =>
+            {
+                if (args.Key == Key.Escape)
+                {
+                    window.Close();
+                }
+            };
+            host.MouseRightButtonUp += (_, _) => window.Close();
+            host.MouseWheel += (_, args) =>
+            {
+                var delta = args.Delta > 0 ? 1.12 : 0.9;
+                var next = Math.Clamp(scale.ScaleX * delta, 0.25, 8);
+                scale.ScaleX = next;
+                scale.ScaleY = next;
+            };
+            host.MouseLeftButtonDown += (_, args) =>
+            {
+                _inspectorPanStart = args.GetPosition(host);
+                _inspectorPanStartX = translate.X;
+                _inspectorPanStartY = translate.Y;
+                host.CaptureMouse();
+            };
+            host.MouseMove += (_, args) =>
+            {
+                if (_inspectorPanStart is null || args.LeftButton != MouseButtonState.Pressed)
+                {
+                    return;
+                }
+
+                var point = args.GetPosition(host);
+                translate.X = _inspectorPanStartX + point.X - _inspectorPanStart.Value.X;
+                translate.Y = _inspectorPanStartY + point.Y - _inspectorPanStart.Value.Y;
+            };
+            host.MouseLeftButtonUp += (_, _) =>
+            {
+                _inspectorPanStart = null;
+                host.ReleaseMouseCapture();
+            };
+
+            window.ShowDialog();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            ViewModel.ShowWarning($"Could not open image preview: {ex.Message}");
+        }
+    }
+
+    private static BitmapImage LoadInspectorImage(string path)
+    {
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.UriSource = new Uri(path, UriKind.Absolute);
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
+    }
+
     private static bool IsFromScrollBar(DependencyObject? source)
     {
         return FindAncestor<System.Windows.Controls.Primitives.ScrollBar>(source) is not null;
@@ -163,5 +399,46 @@ public partial class MainWindow : Window
         }
 
         return null;
+    }
+
+    private static T? FindDataContext<T>(DependencyObject? source)
+        where T : class
+    {
+        while (source is not null)
+        {
+            if (source is FrameworkElement { DataContext: T match })
+            {
+                return match;
+            }
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return null;
+    }
+}
+
+internal sealed class RubberBandAdorner : Adorner
+{
+    private static readonly SolidColorBrush Fill = new(System.Windows.Media.Color.FromArgb(42, 180, 35, 24));
+    private static readonly System.Windows.Media.Pen Stroke = new(new SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 35, 24)), 1.5);
+
+    public RubberBandAdorner(UIElement adornedElement)
+        : base(adornedElement)
+    {
+        IsHitTestVisible = false;
+    }
+
+    public Rect SelectionBounds { get; set; }
+
+    protected override void OnRender(DrawingContext drawingContext)
+    {
+        base.OnRender(drawingContext);
+        if (SelectionBounds.Width == 0 && SelectionBounds.Height == 0)
+        {
+            return;
+        }
+
+        drawingContext.DrawRectangle(Fill, Stroke, SelectionBounds);
     }
 }

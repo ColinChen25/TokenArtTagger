@@ -9,7 +9,7 @@ public static partial class FilenameParser
     {
         var extension = Path.GetExtension(fileName);
         var baseName = Path.GetFileNameWithoutExtension(fileName);
-        var parseBaseName = DuplicateSuffixRegex().Replace(baseName, string.Empty);
+        var parseBaseName = HashSuffixRegex().Replace(DuplicateSuffixRegex().Replace(baseName, string.Empty), string.Empty);
         var parts = parseBaseName.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(part => part.ToLowerInvariant())
             .ToArray();
@@ -76,4 +76,7 @@ public static partial class FilenameParser
 
     [GeneratedRegex(@"\s\(\d+\)$", RegexOptions.CultureInvariant)]
     private static partial Regex DuplicateSuffixRegex();
+
+    [GeneratedRegex(@"__[0-9a-fA-F]{6,64}$", RegexOptions.CultureInvariant)]
+    private static partial Regex HashSuffixRegex();
 }

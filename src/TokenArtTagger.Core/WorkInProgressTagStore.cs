@@ -41,6 +41,16 @@ public sealed class WorkInProgressTagStore
         await using var stream = File.Create(_storePath);
         await JsonSerializer.SerializeAsync(stream, records, options, cancellationToken).ConfigureAwait(false);
     }
+
+    public Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        if (File.Exists(_storePath))
+        {
+            File.Delete(_storePath);
+        }
+
+        return Task.CompletedTask;
+    }
 }
 
 public sealed record WorkInProgressTagRecord(string IdentityKey, TagSet Tags);

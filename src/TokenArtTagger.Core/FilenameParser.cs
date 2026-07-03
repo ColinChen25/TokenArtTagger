@@ -37,7 +37,7 @@ public static partial class FilenameParser
 
         var gender = parts[0];
         var role = parts[1];
-        var race = parts[2];
+        var race = TagSchema.NormalizeRace(parts[2]);
 
         if (!TagSchema.IsKnownGender(gender) || role != TagSchema.GenericRole || !TagSchema.IsKnownRace(race))
         {
@@ -59,7 +59,7 @@ public static partial class FilenameParser
         var gender = parts[0];
         var role = parts[1];
         var style = parts[2];
-        var race = parts[3];
+        var race = TagSchema.NormalizeRace(parts[3]);
 
         if (!TagSchema.IsKnownGender(gender) ||
             !TagSchema.IsKnownRole(role) ||

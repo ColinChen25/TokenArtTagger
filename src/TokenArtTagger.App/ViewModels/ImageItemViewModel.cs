@@ -21,6 +21,8 @@ public sealed class ImageItemViewModel : ViewModelBase
 
     public string FileName => _item.FileName;
 
+    public string DisplayName => ProposedFileName ?? CurrentTagsText;
+
     public string ParsedTagsText => FormatTags(_item.ParsedTags);
 
     public string CurrentTagsText => FormatTags(_item.CurrentTags);
@@ -47,10 +49,18 @@ public sealed class ImageItemViewModel : ViewModelBase
 
     public void ApplyTag(string category, string value)
     {
-        _item = _item with { CurrentTags = _item.CurrentTags.WithTag(category, value) };
+        ReplaceItem(_item with { CurrentTags = _item.CurrentTags.WithTag(category, value) });
+    }
+
+    public void ReplaceItem(ImageItem item)
+    {
+        _item = item;
         ProposedFileName = null;
         PreviewError = null;
         OnPropertyChanged(nameof(Item));
+        OnPropertyChanged(nameof(FileName));
+        OnPropertyChanged(nameof(DisplayName));
+        OnPropertyChanged(nameof(ParsedTagsText));
         OnPropertyChanged(nameof(CurrentTagsText));
         OnPropertyChanged(nameof(IsDirty));
     }
@@ -59,6 +69,7 @@ public sealed class ImageItemViewModel : ViewModelBase
     {
         ProposedFileName = entry?.ProposedFileName;
         PreviewError = entry?.ErrorMessage;
+        OnPropertyChanged(nameof(DisplayName));
     }
 
     private static string FormatTags(TagSet tags)

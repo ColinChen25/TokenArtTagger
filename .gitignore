@@ -45,6 +45,7 @@ coverage.*
 *undo-log*.json
 appsettings.Local.json
 user-settings.json
+work-in-progress-tags.json
 
 # Accidental image-library files
 *.jpg

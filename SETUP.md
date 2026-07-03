@@ -35,5 +35,5 @@ These local state folders are ignored by `.gitignore`.
 ## Skipped
 
 - Git install was skipped because Git already exists on this machine.
-- SQLite was skipped because v0.1 is intentionally in-memory/file-based.
-- AI tagging dependencies were skipped because v0.1 does not include AI tagging.
+- SQLite was skipped because this version still uses file scanning plus local app-data work-in-progress metadata.
+- AI tagging dependencies were skipped because this version does not include AI tagging.

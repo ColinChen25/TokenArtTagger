@@ -18,7 +18,7 @@ public sealed record TagSet(
             TagSchema.GenderCategory => this with { Gender = normalizedValue },
             TagSchema.RoleCategory => WithRole(normalizedValue),
             TagSchema.StyleCategory => this with { WeaponOrStyle = normalizedValue },
-            TagSchema.RaceCategory => this with { Race = normalizedValue },
+            TagSchema.RaceCategory => this with { Race = TagSchema.NormalizeRace(normalizedValue) },
             _ => this
         };
     }
@@ -26,6 +26,12 @@ public sealed record TagSet(
     private TagSet WithRole(string role)
     {
         if (role == TagSchema.GenericRole)
+        {
+            return this with { Role = role, WeaponOrStyle = null };
+        }
+
+        if (!string.IsNullOrWhiteSpace(WeaponOrStyle) &&
+            !TagSchema.IsKnownStyleForRole(role, WeaponOrStyle))
         {
             return this with { Role = role, WeaponOrStyle = null };
         }

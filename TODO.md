@@ -3,7 +3,7 @@
 ## Future Features
 
 - SQLite database for persistent image records and rename history.
-- Freeform tags beyond the fixed v0.1 schema.
+- Freeform tags beyond the fixed schema.
 - Thumbnail cache management UI, including cache size display and manual clear.
 - Duplicate detection using exact content hashes.
 - Perceptual hash similar-image search.

@@ -1,0 +1,193 @@
+<Window x:Class="TokenArtTagger.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:TokenArtTagger.App.ViewModels"
+        mc:Ignorable="d"
+        Title="TokenArtTagger" Height="820" MinHeight="640" Width="1280" MinWidth="980"
+        Background="#F4F3EF">
+    <Window.DataContext>
+        <vm:MainViewModel />
+    </Window.DataContext>
+
+    <Window.Resources>
+        <Style x:Key="PanelTitle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="#252525" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style x:Key="ToolButton" TargetType="Button">
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="Margin" Value="4,0,0,0" />
+        </Style>
+        <Style x:Key="TagButton" TargetType="Button">
+            <Setter Property="MinWidth" Value="78" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="AllowDrop" Value="True" />
+            <EventSetter Event="Drop" Handler="TagButton_Drop" />
+            <EventSetter Event="PreviewDragOver" Handler="TagButton_PreviewDragOver" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="0" Style="{StaticResource ToolButton}" Margin="0,0,8,0"
+                    Content="Choose Folder"
+                    Command="{Binding BrowseCommand}" />
+            <TextBox Grid.Column="1" MinHeight="32" VerticalContentAlignment="Center"
+                     Text="{Binding FolderPath, UpdateSourceTrigger=PropertyChanged}" />
+            <TextBox Grid.Column="2" MinHeight="32" Margin="8,0,0,0" VerticalContentAlignment="Center"
+                     Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" />
+            <StackPanel Grid.Column="3" Orientation="Horizontal">
+                <Button Style="{StaticResource ToolButton}" Content="Scan Folder" Command="{Binding ScanCommand}" />
+                <Button Style="{StaticResource ToolButton}" Content="Preview Rename Batch" Command="{Binding PreviewRenameCommand}" />
+                <Button Style="{StaticResource ToolButton}" Content="Rename Selected" Command="{Binding RenameSelectedCommand}" />
+                <Button Style="{StaticResource ToolButton}" Content="Undo Last Batch" Command="{Binding UndoLastBatchCommand}" />
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="230" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="330" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="12">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Tags" Style="{StaticResource PanelTitle}" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding TagButtons}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:TagButtonViewModel}">
+                                    <Button Style="{StaticResource TagButton}"
+                                            Command="{Binding DataContext.ApplyTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="{Binding Group}">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Group}" FontSize="10" Foreground="#666666" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="1" Margin="12,0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="10">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Images" Style="{StaticResource PanelTitle}" />
+                    <ListBox x:Name="ThumbnailList"
+                             ItemsSource="{Binding ItemsView}"
+                             SelectionMode="Extended"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             SelectionChanged="ThumbnailList_SelectionChanged"
+                             PreviewMouseMove="ThumbnailList_PreviewMouseMove"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Width" Value="192" />
+                                <Setter Property="Height" Value="268" />
+                                <Setter Property="Margin" Value="5" />
+                                <Setter Property="Padding" Value="0" />
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:ImageItemViewModel}">
+                                <Border Background="#FAFAF7" BorderBrush="#DDD7CE" BorderThickness="1" CornerRadius="6" Padding="8">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="142" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+                                        <Border Grid.Row="0" Background="#E8E5DE" CornerRadius="4">
+                                            <Image Source="{Binding Thumbnail}" Stretch="Uniform" />
+                                        </Border>
+                                        <TextBlock Grid.Row="1" Margin="0,8,0,0" Text="{Binding FileName}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                                        <TextBlock Grid.Row="2" Margin="0,4,0,0" Text="{Binding CurrentTagsText}" TextWrapping="Wrap" Foreground="#464646" />
+                                        <TextBlock Grid.Row="3" Margin="0,4,0,0" Text="{Binding ProposedFileName}" TextWrapping="Wrap" Foreground="#245C37" />
+                                        <StackPanel Grid.Row="4" Orientation="Vertical" Margin="0,6,0,0">
+                                            <TextBlock Text="Changed" Foreground="#8A4D00" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsDirty}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding PreviewError}" Foreground="#9C1F1F" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="2" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="12">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Selection" Style="{StaticResource PanelTitle}" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel DataContext="{Binding SelectedItem}">
+                            <TextBlock Text="{Binding FullPath}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                            <Separator Margin="0,12" />
+                            <TextBlock Text="Current filename" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding FileName}" TextWrapping="Wrap" Margin="0,4,0,12" />
+                            <TextBlock Text="Parsed tags" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding ParsedTagsText}" TextWrapping="Wrap" Margin="0,4,0,12" />
+                            <TextBlock Text="Current tags" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding CurrentTagsText}" TextWrapping="Wrap" Margin="0,4,0,12" />
+                            <TextBlock Text="Proposed filename" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding ProposedFileName}" TextWrapping="Wrap" Margin="0,4,0,12" Foreground="#245C37" />
+                            <TextBlock Text="{Binding PreviewError}" TextWrapping="Wrap" Foreground="#9C1F1F" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Margin="0,12,0,0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="10">
+            <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+        </Border>
+    </Grid>
+</Window>

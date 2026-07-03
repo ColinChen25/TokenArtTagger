@@ -1,0 +1,47 @@
+# Local SDK, package, and sandboxed build state
+.appdata/
+.dotnet-home/
+.nuget/
+.tools/
+
+# Build output
+[Bb]in/
+[Oo]bj/
+**/[Bb]in/
+**/[Oo]bj/
+
+# Visual Studio and user-specific IDE state
+.vs/
+*.user
+*.userosscache
+*.suo
+*.rsuser
+*.sln.docstates
+
+# Test output and coverage artifacts
+[Tt]est[Rr]esult*/
+[Tt]est[Rr]esults/
+coverage/
+coverage.*
+*.trx
+*.coverage
+*.coveragexml
+
+# Generated app artifacts
+[Pp]ublish/
+*.appx
+*.appxbundle
+*.msix
+*.msixbundle
+*.nupkg
+*.snupkg
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.pid
+
+# OS noise
+Thumbs.db
+Desktop.ini

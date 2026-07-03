@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TokenArtTagger.App/TokenArtTagger.App.csproj" />
+    <Project Path="src/TokenArtTagger.Core/TokenArtTagger.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TokenArtTagger.Tests/TokenArtTagger.Tests.csproj" />
+  </Folder>
+</Solution>

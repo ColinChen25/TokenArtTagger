@@ -19,6 +19,8 @@ This workspace uses the project-local .NET SDK at `.tools\dotnet`.
 
 In the app, choose a root image folder, scan it, select thumbnails with normal Windows extended selection, apply tags, preview the rename batch, then confirm `Rename Selected`.
 
+Use a copied test folder first, for example `C:\Path\To\Your\ImageLibrary`.
+
 ## Supported Formats
 
 - `.jpg`
@@ -34,7 +36,7 @@ GIF thumbnails show as a still frame. WebP thumbnail support depends on the Wind
 
 Test on a copied folder before using the real image library.
 
-The app only renames selected files in place after preview and confirmation. It does not move files, delete files, or rename automatically after tagging. Each rename batch writes a JSON undo log under `.tokenarttagger-undo` in the selected root folder.
+The app only renames selected files in place after preview and confirmation. It does not move files, delete files, or rename automatically after tagging. Each rename batch writes a JSON undo log under `.tokenarttagger-undo` in the selected root folder; that folder is ignored by Git.
 
 Output filenames use stable content hashes:
 
@@ -48,9 +50,10 @@ The original extension and extension casing are preserved.
 - Undo is not automated in v0.1, though JSON undo logs are written.
 - No SQLite database yet.
 - No freeform tags yet.
-- No persistent thumbnail cache yet.
+- Thumbnail cache files are runtime artifacts stored outside the scanned image folder by default.
 - No AI tagging or automatic tag suggestions.
 - Thumbnail decode failures are shown as blank thumbnails rather than blocking scan/rename.
+- Middle-click autoscroll is not implemented; normal scrollbar dragging and mouse wheel scrolling are the supported fast-scroll methods.
 
 ## Tests
 

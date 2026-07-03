@@ -3,6 +3,9 @@
 .dotnet-home/
 .nuget/
 .tools/
+.cache/
+thumbnails/
+thumbnail-cache/
 
 # Build output
 [Bb]in/
@@ -35,6 +38,21 @@ coverage.*
 *.msixbundle
 *.nupkg
 *.snupkg
+
+# TokenArtTagger private/runtime files
+.tokenarttagger-undo/
+*.undo.json
+*undo-log*.json
+appsettings.Local.json
+user-settings.json
+
+# Accidental image-library files
+*.jpg
+*.jpeg
+*.jfif
+*.png
+*.webp
+*.gif
 
 # Logs and temporary files
 *.log

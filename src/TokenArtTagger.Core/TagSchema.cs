@@ -29,17 +29,17 @@ public static class TagSchema
 
         foreach (var style in MeleeStyles)
         {
-            yield return new TagButtonDefinition(StyleCategory, style, "Melee");
+            yield return new TagButtonDefinition(StyleCategory, style, "Melee Weapon/Style");
         }
 
         foreach (var style in RangeStyles)
         {
-            yield return new TagButtonDefinition(StyleCategory, style, "Range");
+            yield return new TagButtonDefinition(StyleCategory, style, "Range Weapon/Style");
         }
 
         foreach (var style in CasterStyles)
         {
-            yield return new TagButtonDefinition(StyleCategory, style, "Caster");
+            yield return new TagButtonDefinition(StyleCategory, style, "Caster Style");
         }
 
         foreach (var race in Races)

@@ -6,9 +6,11 @@ public static class FileRenamer
 {
     public static async Task<RenamePreview> BuildPreviewAsync(
         IReadOnlyList<ImageItem> items,
+        IProgress<RenamePreviewProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var entries = new List<RenamePreviewEntry>();
+        var completed = 0;
 
         foreach (var group in items.GroupBy(item => item.DirectoryPath, StringComparer.OrdinalIgnoreCase))
         {
@@ -20,6 +22,7 @@ public static class FileRenamer
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 existingNames.Remove(selectedItem.FileName);
+                progress?.Report(new RenamePreviewProgress(completed, items.Count, selectedItem.FileName));
 
                 try
                 {
@@ -45,6 +48,9 @@ public static class FileRenamer
                 {
                     entries.Add(new RenamePreviewEntry(selectedItem, null, null, null, ex.Message));
                 }
+
+                completed++;
+                progress?.Report(new RenamePreviewProgress(completed, items.Count, selectedItem.FileName));
             }
         }
 

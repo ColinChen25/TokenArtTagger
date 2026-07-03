@@ -15,7 +15,10 @@ public sealed class MainViewModel : ViewModelBase
     private string _folderPath = string.Empty;
     private string _filterText = string.Empty;
     private string _statusMessage = "Choose a folder to begin.";
+    private string _renameBlockReason = "Select one or more images before previewing or renaming.";
     private RenamePreview? _lastPreview;
+    private RenamePreviewScope? _lastPreviewScope;
+    private CancellationTokenSource? _previewCancellation;
 
     public MainViewModel()
     {
@@ -23,12 +26,16 @@ public sealed class MainViewModel : ViewModelBase
         ItemsView.Filter = FilterItem;
         TagButtons = new ObservableCollection<TagButtonViewModel>(
             TagSchema.TagButtons().Select(tag => new TagButtonViewModel(tag.Category, tag.Value, tag.Group)));
+        TagButtonsView = CollectionViewSource.GetDefaultView(TagButtons);
+        TagButtonsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(TagButtonViewModel.Group)));
 
         BrowseCommand = new RelayCommand(_ => BrowseFolder());
         ScanCommand = new AsyncRelayCommand(_ => ScanAsync(), _ => !string.IsNullOrWhiteSpace(FolderPath));
         ApplyTagCommand = new RelayCommand(parameter => ApplyTag((TagButtonViewModel)parameter!), parameter => parameter is TagButtonViewModel);
-        PreviewRenameCommand = new AsyncRelayCommand(_ => PreviewRenameAsync(), _ => SelectedItems.Count > 0);
-        RenameSelectedCommand = new AsyncRelayCommand(_ => RenameSelectedAsync(), _ => _lastPreview?.CanRename == true);
+        PreviewRenameCommand = new AsyncRelayCommand(_ => PreviewRenameAsync(RenamePreviewScope.Selected), _ => SelectedItems.Count > 0);
+        PreviewChangedCommand = new AsyncRelayCommand(_ => PreviewRenameAsync(RenamePreviewScope.Changed), _ => Items.Any(item => item.IsDirty));
+        CancelPreviewCommand = new RelayCommand(_ => CancelPreview(), _ => _previewCancellation is not null);
+        RenameSelectedCommand = new AsyncRelayCommand(_ => RenameSelectedAsync(), _ => RenameReadiness.Evaluate(CurrentSelectedItems()).CanPreview);
         UndoLastBatchCommand = new RelayCommand(_ => StatusMessage = "Undo is not implemented in v0.1. Use the JSON undo log for manual recovery.");
     }
 
@@ -37,6 +44,8 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<ImageItemViewModel> SelectedItems { get; } = [];
 
     public ObservableCollection<TagButtonViewModel> TagButtons { get; }
+
+    public ICollectionView TagButtonsView { get; }
 
     public ICollectionView ItemsView { get; }
 
@@ -72,6 +81,12 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _statusMessage, value);
     }
 
+    public string RenameBlockReason
+    {
+        get => _renameBlockReason;
+        private set => SetProperty(ref _renameBlockReason, value);
+    }
+
     public RelayCommand BrowseCommand { get; }
 
     public AsyncRelayCommand ScanCommand { get; }
@@ -79,6 +94,10 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand ApplyTagCommand { get; }
 
     public AsyncRelayCommand PreviewRenameCommand { get; }
+
+    public AsyncRelayCommand PreviewChangedCommand { get; }
+
+    public RelayCommand CancelPreviewCommand { get; }
 
     public AsyncRelayCommand RenameSelectedCommand { get; }
 
@@ -88,21 +107,22 @@ public sealed class MainViewModel : ViewModelBase
     {
         StatusMessage = "Scanning...";
         _lastPreview = null;
+        _lastPreviewScope = null;
         Items.Clear();
         SelectedItems.Clear();
-        _thumbnailService.Clear();
+        _thumbnailService.ClearMemory();
 
         var result = await FileScanner.ScanAsync(FolderPath);
         foreach (var item in result.Items.OrderBy(item => item.FileName, StringComparer.OrdinalIgnoreCase))
         {
             var viewModel = new ImageItemViewModel(item);
             Items.Add(viewModel);
-            _ = LoadThumbnailAsync(viewModel);
         }
 
         StatusMessage = result.Errors.Count == 0
             ? $"Scanned {Items.Count} images."
             : $"Scanned {Items.Count} images with {result.Errors.Count} errors.";
+        UpdateRenameReadiness();
         RaiseCommandStates();
     }
 
@@ -114,7 +134,10 @@ public sealed class MainViewModel : ViewModelBase
             SelectedItems.Add(item);
         }
 
+        _lastPreview = null;
+        _lastPreviewScope = null;
         OnPropertyChanged(nameof(SelectedItem));
+        UpdateRenameReadiness();
         RaiseCommandStates();
     }
 
@@ -132,22 +155,74 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         _lastPreview = null;
+        _lastPreviewScope = null;
         StatusMessage = $"Applied {tag.Value} to {SelectedItems.Count} selected image(s).";
+        UpdateRenameReadiness();
         RaiseCommandStates();
     }
 
-    private async Task PreviewRenameAsync()
+    public async Task LoadThumbnailAsync(ImageItemViewModel item)
     {
-        StatusMessage = "Building rename preview...";
+        if (item.Thumbnail is not null)
+        {
+            return;
+        }
+
+        var thumbnail = await _thumbnailService.LoadThumbnailAsync(item.FullPath);
+        System.Windows.Application.Current.Dispatcher.Invoke(() => item.Thumbnail = thumbnail);
+    }
+
+    private async Task PreviewRenameAsync(RenamePreviewScope scope)
+    {
+        var targets = scope == RenamePreviewScope.Selected
+            ? RenameTargetSelector.Selected(CurrentSelectedItems(), CurrentAllItems())
+            : RenameTargetSelector.Dirty(CurrentAllItems());
+
+        var readiness = RenameReadiness.Evaluate(targets);
+        if (!readiness.CanPreview)
+        {
+            StatusMessage = readiness.Message;
+            RenameBlockReason = readiness.Message;
+            RaiseCommandStates();
+            return;
+        }
+
+        StatusMessage = $"Building rename preview for {targets.Count} {scope.ToString().ToLowerInvariant()} image(s)...";
         foreach (var item in Items)
         {
             item.ApplyPreview(null);
         }
 
-        _lastPreview = await FileRenamer.BuildPreviewAsync(SelectedItems.Select(item => item.Item).ToList());
+        _previewCancellation?.Dispose();
+        _previewCancellation = new CancellationTokenSource();
+        CancelPreviewCommand.RaiseCanExecuteChanged();
+        var progress = new Progress<RenamePreviewProgress>(step =>
+        {
+            StatusMessage = $"Hashing {step.Completed}/{step.Total}: {step.CurrentFileName}";
+        });
+
+        try
+        {
+            _lastPreview = await FileRenamer.BuildPreviewAsync(targets, progress, _previewCancellation.Token);
+            _lastPreviewScope = scope;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Rename preview canceled.";
+            _lastPreview = null;
+            _lastPreviewScope = null;
+            return;
+        }
+        finally
+        {
+            _previewCancellation?.Dispose();
+            _previewCancellation = null;
+            CancelPreviewCommand.RaiseCanExecuteChanged();
+        }
+
         foreach (var entry in _lastPreview.Entries)
         {
-            SelectedItems.FirstOrDefault(item => item.FullPath == entry.Item.FullPath)?.ApplyPreview(entry);
+            Items.FirstOrDefault(item => item.FullPath == entry.Item.FullPath)?.ApplyPreview(entry);
         }
 
         var errors = _lastPreview.Entries.Count(entry => !entry.CanRename);
@@ -159,9 +234,14 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task RenameSelectedAsync()
     {
-        if (_lastPreview?.CanRename != true)
+        if (_lastPreview?.CanRename != true || _lastPreviewScope != RenamePreviewScope.Selected)
         {
-            StatusMessage = "Preview the selected batch before renaming.";
+            await PreviewRenameAsync(RenamePreviewScope.Selected);
+            if (_lastPreview?.CanRename == true)
+            {
+                StatusMessage = "Preview ready. Review the proposed filenames, then click Rename Selected again to confirm.";
+            }
+
             return;
         }
 
@@ -200,10 +280,9 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task LoadThumbnailAsync(ImageItemViewModel item)
+    private void CancelPreview()
     {
-        var thumbnail = await _thumbnailService.LoadThumbnailAsync(item.FullPath);
-        System.Windows.Application.Current.Dispatcher.Invoke(() => item.Thumbnail = thumbnail);
+        _previewCancellation?.Cancel();
     }
 
     private bool FilterItem(object candidate)
@@ -222,6 +301,30 @@ public sealed class MainViewModel : ViewModelBase
     {
         ScanCommand.RaiseCanExecuteChanged();
         PreviewRenameCommand.RaiseCanExecuteChanged();
+        PreviewChangedCommand.RaiseCanExecuteChanged();
+        CancelPreviewCommand.RaiseCanExecuteChanged();
         RenameSelectedCommand.RaiseCanExecuteChanged();
     }
+
+    private IReadOnlyList<ImageItem> CurrentSelectedItems()
+    {
+        return SelectedItems.Select(item => item.Item).ToList();
+    }
+
+    private IReadOnlyList<ImageItem> CurrentAllItems()
+    {
+        return Items.Select(item => item.Item).ToList();
+    }
+
+    private void UpdateRenameReadiness()
+    {
+        var readiness = RenameReadiness.Evaluate(CurrentSelectedItems());
+        RenameBlockReason = readiness.CanPreview ? "Ready to preview selected images." : readiness.Message;
+    }
+}
+
+public enum RenamePreviewScope
+{
+    Selected,
+    Changed
 }

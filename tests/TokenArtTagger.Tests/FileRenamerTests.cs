@@ -43,6 +43,37 @@ public sealed class FileRenamerTests
     }
 
     [TestMethod]
+    public async Task BuildPreviewAsync_NormalizesParsedNumberedFilenameWithoutTagChanges()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, "female-caster-bard-human (036).jpg");
+        File.WriteAllBytes(path, [1, 2, 3, 4, 5]);
+        var item = ImageItem.FromPath(path);
+
+        var preview = await FileRenamer.BuildPreviewAsync([item]);
+
+        Assert.IsTrue(preview.CanRename);
+        Assert.AreEqual("female-caster-bard-human__74f81f.jpg", preview.Entries[0].ProposedFileName);
+    }
+
+    [TestMethod]
+    public async Task BuildPreviewAsync_AllowsGenericRoleWithoutStyle()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, "portrait.webp");
+        File.WriteAllBytes(path, [1, 2, 3, 4, 5]);
+        var item = ImageItem.FromPath(path) with
+        {
+            CurrentTags = new TagSet("male", "generic", null, "human")
+        };
+
+        var preview = await FileRenamer.BuildPreviewAsync([item]);
+
+        Assert.IsTrue(preview.CanRename);
+        Assert.AreEqual("male-generic-human__74f81f.webp", preview.Entries[0].ProposedFileName);
+    }
+
+    [TestMethod]
     public async Task RenameAsync_RenamesInPlaceAndWritesUndoLog()
     {
         using var temp = new TempFolder();

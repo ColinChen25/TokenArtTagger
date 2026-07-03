@@ -12,6 +12,7 @@ namespace TokenArtTagger.App.ViewModels;
 public sealed class MainViewModel : ViewModelBase
 {
     private readonly ThumbnailService _thumbnailService = new();
+    private readonly WorkInProgressTagStore _workInProgressStore = WorkInProgressTagStore.CreateDefault();
     private string _folderPath = string.Empty;
     private string _filterText = string.Empty;
     private string _statusMessage = "Choose a folder to begin.";
@@ -19,6 +20,11 @@ public sealed class MainViewModel : ViewModelBase
     private RenamePreview? _lastPreview;
     private RenamePreviewScope? _lastPreviewScope;
     private CancellationTokenSource? _previewCancellation;
+    private BucketPassOptionViewModel _selectedBucketPass;
+    private BucketFilterMode _selectedBucketFilter = BucketFilterMode.MissingOnly;
+    private int _bucketPageSize = 100;
+    private int _bucketPageIndex;
+    private string? _selectedDefaultBucketValue;
 
     public MainViewModel()
     {
@@ -29,6 +35,12 @@ public sealed class MainViewModel : ViewModelBase
         TagButtonsView = CollectionViewSource.GetDefaultView(TagButtons);
         TagButtonsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(TagButtonViewModel.Group)));
 
+        BucketPasses = new ObservableCollection<BucketPassOptionViewModel>(
+            Enum.GetValues<BucketPass>().Select(pass => new BucketPassOptionViewModel(pass, BucketPassDefinition.For(pass).DisplayName)));
+        _selectedBucketPass = BucketPasses[0];
+        BucketFilterModes = new ObservableCollection<BucketFilterMode>(Enum.GetValues<BucketFilterMode>());
+        BucketPageSizes = new ObservableCollection<int>([50, 100, 200]);
+
         BrowseCommand = new RelayCommand(_ => BrowseFolder());
         ScanCommand = new AsyncRelayCommand(_ => ScanAsync(), _ => !string.IsNullOrWhiteSpace(FolderPath));
         ApplyTagCommand = new RelayCommand(parameter => ApplyTag((TagButtonViewModel)parameter!), parameter => parameter is TagButtonViewModel);
@@ -36,12 +48,28 @@ public sealed class MainViewModel : ViewModelBase
         PreviewChangedCommand = new AsyncRelayCommand(_ => PreviewRenameAsync(RenamePreviewScope.Changed), _ => Items.Any(item => item.IsDirty));
         CancelPreviewCommand = new RelayCommand(_ => CancelPreview(), _ => _previewCancellation is not null);
         RenameSelectedCommand = new AsyncRelayCommand(_ => RenameSelectedAsync(), _ => RenameReadiness.Evaluate(CurrentSelectedItems()).CanPreview);
-        UndoLastBatchCommand = new RelayCommand(_ => StatusMessage = "Undo is not implemented in v0.1. Use the JSON undo log for manual recovery.");
+        UndoLastBatchCommand = new RelayCommand(_ => StatusMessage = $"Undo is not implemented in {AppInfo.Version}. Use the JSON undo log for manual recovery.");
+        ApplyBucketCommand = new RelayCommand(parameter => ApplyBucket((BucketDefinitionViewModel)parameter!), parameter => parameter is BucketDefinitionViewModel);
+        ApplyDefaultToPageCommand = new RelayCommand(_ => ApplyDefaultToCurrentPage(), _ => BucketPageItems.Count > 0 && SelectedDefaultBucketValue is not null);
+        NextBucketPageCommand = new RelayCommand(_ => MoveBucketPage(1), _ => BucketPageIndex + 1 < BucketPageCount);
+        PreviousBucketPageCommand = new RelayCommand(_ => MoveBucketPage(-1), _ => BucketPageIndex > 0);
+        InvertBucketSelectionCommand = new RelayCommand(_ => RequestBucketSelectionAction?.Invoke(BucketSelectionAction.Invert), _ => BucketPageItems.Count > 0);
+        SelectUntaggedBucketCommand = new RelayCommand(_ => RequestBucketSelectionAction?.Invoke(BucketSelectionAction.SelectUntagged), _ => BucketPageItems.Count > 0);
+
+        RefreshBucketDefinitions();
     }
+
+    public event Action<BucketSelectionAction>? RequestBucketSelectionAction;
+
+    public string AppTitle => AppInfo.WindowTitle;
 
     public ObservableCollection<ImageItemViewModel> Items { get; } = [];
 
     public ObservableCollection<ImageItemViewModel> SelectedItems { get; } = [];
+
+    public ObservableCollection<ImageItemViewModel> BucketPageItems { get; } = [];
+
+    public ObservableCollection<ImageItemViewModel> BucketSelectedItems { get; } = [];
 
     public ObservableCollection<TagButtonViewModel> TagButtons { get; }
 
@@ -49,7 +77,29 @@ public sealed class MainViewModel : ViewModelBase
 
     public ICollectionView ItemsView { get; }
 
+    public ObservableCollection<BucketPassOptionViewModel> BucketPasses { get; }
+
+    public ObservableCollection<BucketFilterMode> BucketFilterModes { get; }
+
+    public ObservableCollection<int> BucketPageSizes { get; }
+
+    public ObservableCollection<BucketDefinitionViewModel> BucketBuckets { get; } = [];
+
     public ImageItemViewModel? SelectedItem => SelectedItems.LastOrDefault();
+
+    public string SelectionCountText => SelectedItems.Count == 1
+        ? "Selected: 1 image"
+        : $"Selected: {SelectedItems.Count} images";
+
+    public string BucketSelectionCountText => BucketSelectedItems.Count == 1
+        ? "Selected: 1 image"
+        : $"Selected: {BucketSelectedItems.Count} images";
+
+    public string BucketPageText => BucketPageCount == 0
+        ? "Page 0 of 0"
+        : $"Page {BucketPageIndex + 1} of {BucketPageCount}";
+
+    public int BucketPageCount { get; private set; }
 
     public string FolderPath
     {
@@ -87,6 +137,70 @@ public sealed class MainViewModel : ViewModelBase
         private set => SetProperty(ref _renameBlockReason, value);
     }
 
+    public BucketPassOptionViewModel SelectedBucketPass
+    {
+        get => _selectedBucketPass;
+        set
+        {
+            if (SetProperty(ref _selectedBucketPass, value))
+            {
+                BucketPageIndex = 0;
+                RefreshBucketDefinitions();
+                RefreshBucketPage();
+            }
+        }
+    }
+
+    public BucketFilterMode SelectedBucketFilter
+    {
+        get => _selectedBucketFilter;
+        set
+        {
+            if (SetProperty(ref _selectedBucketFilter, value))
+            {
+                BucketPageIndex = 0;
+                RefreshBucketPage();
+            }
+        }
+    }
+
+    public int BucketPageSize
+    {
+        get => _bucketPageSize;
+        set
+        {
+            if (SetProperty(ref _bucketPageSize, value))
+            {
+                BucketPageIndex = 0;
+                RefreshBucketPage();
+            }
+        }
+    }
+
+    public int BucketPageIndex
+    {
+        get => _bucketPageIndex;
+        private set
+        {
+            if (SetProperty(ref _bucketPageIndex, value))
+            {
+                OnPropertyChanged(nameof(BucketPageText));
+            }
+        }
+    }
+
+    public string? SelectedDefaultBucketValue
+    {
+        get => _selectedDefaultBucketValue;
+        set
+        {
+            if (SetProperty(ref _selectedDefaultBucketValue, value))
+            {
+                RaiseCommandStates();
+            }
+        }
+    }
+
     public RelayCommand BrowseCommand { get; }
 
     public AsyncRelayCommand ScanCommand { get; }
@@ -103,6 +217,18 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand UndoLastBatchCommand { get; }
 
+    public RelayCommand ApplyBucketCommand { get; }
+
+    public RelayCommand ApplyDefaultToPageCommand { get; }
+
+    public RelayCommand NextBucketPageCommand { get; }
+
+    public RelayCommand PreviousBucketPageCommand { get; }
+
+    public RelayCommand InvertBucketSelectionCommand { get; }
+
+    public RelayCommand SelectUntaggedBucketCommand { get; }
+
     public async Task ScanAsync()
     {
         StatusMessage = "Scanning...";
@@ -110,15 +236,19 @@ public sealed class MainViewModel : ViewModelBase
         _lastPreviewScope = null;
         Items.Clear();
         SelectedItems.Clear();
+        BucketSelectedItems.Clear();
+        BucketPageItems.Clear();
         _thumbnailService.ClearMemory();
 
         var result = await FileScanner.ScanAsync(FolderPath);
-        foreach (var item in result.Items.OrderBy(item => item.FileName, StringComparer.OrdinalIgnoreCase))
+        var workInProgress = await LoadWorkInProgressMapAsync();
+        foreach (var scannedItem in result.Items.OrderBy(item => item.FileName, StringComparer.OrdinalIgnoreCase))
         {
-            var viewModel = new ImageItemViewModel(item);
-            Items.Add(viewModel);
+            var item = ApplyWorkInProgress(scannedItem, workInProgress);
+            Items.Add(new ImageItemViewModel(item));
         }
 
+        RefreshBucketPage();
         StatusMessage = result.Errors.Count == 0
             ? $"Scanned {Items.Count} images."
             : $"Scanned {Items.Count} images with {result.Errors.Count} errors.";
@@ -137,7 +267,20 @@ public sealed class MainViewModel : ViewModelBase
         _lastPreview = null;
         _lastPreviewScope = null;
         OnPropertyChanged(nameof(SelectedItem));
+        OnPropertyChanged(nameof(SelectionCountText));
         UpdateRenameReadiness();
+        RaiseCommandStates();
+    }
+
+    public void ReplaceBucketSelection(IEnumerable<ImageItemViewModel> selectedItems)
+    {
+        BucketSelectedItems.Clear();
+        foreach (var item in selectedItems)
+        {
+            BucketSelectedItems.Add(item);
+        }
+
+        OnPropertyChanged(nameof(BucketSelectionCountText));
         RaiseCommandStates();
     }
 
@@ -149,16 +292,9 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        foreach (var item in SelectedItems)
-        {
-            item.ApplyTag(tag.Category, tag.Value);
-        }
-
-        _lastPreview = null;
-        _lastPreviewScope = null;
-        StatusMessage = $"Applied {tag.Value} to {SelectedItems.Count} selected image(s).";
-        UpdateRenameReadiness();
-        RaiseCommandStates();
+        var message = ApplyTagTo(SelectedItems, tag.Category, tag.Value);
+        StatusMessage = message ?? $"Applied {tag.Value} to {SelectedItems.Count} selected image(s).";
+        UpdateAfterTagsChanged();
     }
 
     public async Task LoadThumbnailAsync(ImageItemViewModel item)
@@ -187,7 +323,8 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        StatusMessage = $"Building rename preview for {targets.Count} {scope.ToString().ToLowerInvariant()} image(s)...";
+        var label = scope == RenamePreviewScope.Selected ? "selected" : "changed";
+        StatusMessage = $"Building rename preview for {targets.Count} {label} image(s)...";
         foreach (var item in Items)
         {
             item.ApplyPreview(null);
@@ -227,8 +364,9 @@ public sealed class MainViewModel : ViewModelBase
 
         var errors = _lastPreview.Entries.Count(entry => !entry.CanRename);
         StatusMessage = errors == 0
-            ? $"Preview ready for {_lastPreview.Entries.Count} selected image(s)."
+            ? $"Preview ready for {_lastPreview.Entries.Count} {label} image(s)."
             : $"Preview found {errors} issue(s). Fix missing tags or conflicts before renaming.";
+        RenameBlockReason = _lastPreview.CanRename ? "Ready to rename selected preview." : "Preview has issues.";
         RaiseCommandStates();
     }
 
@@ -246,7 +384,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         var confirmation = System.Windows.MessageBox.Show(
-            $"Rename {_lastPreview.Entries.Count} selected file(s) in place? This cannot be undone automatically in v0.1.",
+            $"Rename {_lastPreview.Entries.Count} selected file(s) in place?",
             "Confirm Rename",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
@@ -257,12 +395,192 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        var renamedPaths = _lastPreview.Entries
+            .Where(entry => entry.CanRename && entry.ProposedPath is not null)
+            .Select(entry => entry.ProposedPath!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var result = await FileRenamer.RenameAsync(_lastPreview, FolderPath);
         StatusMessage = result.Errors.Count == 0
             ? $"Renamed {result.RenamedCount} file(s). Undo log: {result.UndoLogPath}"
             : $"Renamed {result.RenamedCount} file(s) with {result.Errors.Count} error(s). Undo log: {result.UndoLogPath}";
 
         await ScanAsync();
+        var stillSelected = Items.Where(item => renamedPaths.Contains(item.FullPath)).ToList();
+        ReplaceSelection(stillSelected);
+    }
+
+    private void ApplyBucket(BucketDefinitionViewModel bucket)
+    {
+        if (BucketSelectedItems.Count == 0)
+        {
+            StatusMessage = "Select one or more bucket images before applying a bucket.";
+            return;
+        }
+
+        var message = ApplyTagTo(BucketSelectedItems, bucket.Category, bucket.Value);
+        StatusMessage = message ?? $"Applied {bucket.Category}={bucket.Value} to {BucketSelectedItems.Count} image(s).";
+        UpdateAfterTagsChanged();
+    }
+
+    private void ApplyDefaultToCurrentPage()
+    {
+        if (SelectedDefaultBucketValue is null || BucketPageItems.Count == 0)
+        {
+            return;
+        }
+
+        var preview = BucketRemainderTagger.ApplyDefault(
+            BucketPageItems.Select(item => item.Item).ToList(),
+            SelectedBucketPass.Pass,
+            SelectedDefaultBucketValue);
+
+        if (preview.ChangedCount == 0)
+        {
+            StatusMessage = "No remaining unassigned images on this page.";
+            return;
+        }
+
+        var confirmation = System.Windows.MessageBox.Show(
+            $"Apply {SelectedDefaultBucketValue} to {preview.ChangedCount} remaining image(s) on this page?",
+            "Apply Default To Page",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirmation != MessageBoxResult.Yes)
+        {
+            StatusMessage = "Default-to-page canceled.";
+            return;
+        }
+
+        foreach (var updated in preview.Items)
+        {
+            Items.FirstOrDefault(item => item.FullPath == updated.FullPath)?.ReplaceItem(updated);
+        }
+
+        StatusMessage = $"Applied {SelectedDefaultBucketValue} to {preview.ChangedCount} remaining image(s) on this page.";
+        UpdateAfterTagsChanged();
+    }
+
+    private string? ApplyTagTo(IEnumerable<ImageItemViewModel> items, string category, string value)
+    {
+        string? message = null;
+        var list = items.ToList();
+        foreach (var item in list)
+        {
+            var before = item.Item.CurrentTags;
+            item.ApplyTag(category, value);
+            var after = item.Item.CurrentTags;
+            if (category == TagSchema.RoleCategory &&
+                !string.IsNullOrWhiteSpace(before.WeaponOrStyle) &&
+                string.IsNullOrWhiteSpace(after.WeaponOrStyle) &&
+                !string.Equals(value, TagSchema.GenericRole, StringComparison.OrdinalIgnoreCase))
+            {
+                message = $"Cleared incompatible style '{before.WeaponOrStyle}'; {TagSchema.StyleRequirementMessage(value)}.";
+            }
+        }
+
+        return message;
+    }
+
+    private void UpdateAfterTagsChanged()
+    {
+        _lastPreview = null;
+        _lastPreviewScope = null;
+        _ = SaveWorkInProgressAsync();
+        RefreshBucketPage();
+        UpdateRenameReadiness();
+        RaiseCommandStates();
+    }
+
+    private void RefreshBucketDefinitions()
+    {
+        BucketBuckets.Clear();
+        var definition = BucketPassDefinition.For(SelectedBucketPass.Pass);
+        foreach (var bucket in definition.Buckets)
+        {
+            BucketBuckets.Add(new BucketDefinitionViewModel(bucket.Category, bucket.Value, bucket.Label));
+        }
+
+        SelectedDefaultBucketValue = BucketBuckets.FirstOrDefault()?.Value;
+    }
+
+    private void RefreshBucketPage()
+    {
+        var workingSet = BucketWorkingSet.Filter(
+            CurrentAllItems(),
+            SelectedBucketPass.Pass,
+            SelectedBucketFilter);
+        BucketPageCount = workingSet.Count == 0 ? 0 : (int)Math.Ceiling(workingSet.Count / (double)BucketPageSize);
+        if (BucketPageIndex >= BucketPageCount)
+        {
+            BucketPageIndex = Math.Max(0, BucketPageCount - 1);
+        }
+
+        BucketPageItems.Clear();
+        foreach (var item in workingSet.Skip(BucketPageIndex * BucketPageSize).Take(BucketPageSize))
+        {
+            var viewModel = Items.FirstOrDefault(candidate => candidate.FullPath == item.FullPath);
+            if (viewModel is not null)
+            {
+                BucketPageItems.Add(viewModel);
+            }
+        }
+
+        BucketSelectedItems.Clear();
+        OnPropertyChanged(nameof(BucketPageCount));
+        OnPropertyChanged(nameof(BucketPageText));
+        OnPropertyChanged(nameof(BucketSelectionCountText));
+        RaiseCommandStates();
+    }
+
+    private void MoveBucketPage(int offset)
+    {
+        BucketPageIndex = Math.Clamp(BucketPageIndex + offset, 0, Math.Max(0, BucketPageCount - 1));
+        RefreshBucketPage();
+    }
+
+    public bool IsMissingForCurrentBucketPass(ImageItemViewModel item)
+    {
+        return BucketWorkingSet.Filter([item.Item], SelectedBucketPass.Pass, BucketFilterMode.MissingOnly).Count > 0;
+    }
+
+    private async Task<Dictionary<string, WorkInProgressTagRecord>> LoadWorkInProgressMapAsync()
+    {
+        var records = await _workInProgressStore.LoadAsync();
+        return records.ToDictionary(record => record.IdentityKey, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private ImageItem ApplyWorkInProgress(ImageItem item, Dictionary<string, WorkInProgressTagRecord> records)
+    {
+        try
+        {
+            var identity = FileIdentity.FromPath(item.FullPath);
+            return records.TryGetValue(identity.Key, out var record)
+                ? item with { CurrentTags = record.Tags }
+                : item;
+        }
+        catch (IOException)
+        {
+            return item;
+        }
+    }
+
+    private async Task SaveWorkInProgressAsync()
+    {
+        var records = new List<WorkInProgressTagRecord>();
+        foreach (var item in Items.Where(item => item.IsDirty))
+        {
+            try
+            {
+                records.Add(new WorkInProgressTagRecord(FileIdentity.FromPath(item.FullPath).Key, item.Item.CurrentTags));
+            }
+            catch (IOException)
+            {
+                // Ignore unavailable files; scanning/renaming will report IO issues separately.
+            }
+        }
+
+        await _workInProgressStore.SaveAsync(records);
     }
 
     private void BrowseFolder()
@@ -304,6 +622,11 @@ public sealed class MainViewModel : ViewModelBase
         PreviewChangedCommand.RaiseCanExecuteChanged();
         CancelPreviewCommand.RaiseCanExecuteChanged();
         RenameSelectedCommand.RaiseCanExecuteChanged();
+        ApplyDefaultToPageCommand.RaiseCanExecuteChanged();
+        NextBucketPageCommand.RaiseCanExecuteChanged();
+        PreviousBucketPageCommand.RaiseCanExecuteChanged();
+        InvertBucketSelectionCommand.RaiseCanExecuteChanged();
+        SelectUntaggedBucketCommand.RaiseCanExecuteChanged();
     }
 
     private IReadOnlyList<ImageItem> CurrentSelectedItems()
@@ -323,8 +646,15 @@ public sealed class MainViewModel : ViewModelBase
     }
 }
 
-public enum RenamePreviewScope
+public sealed record BucketPassOptionViewModel(BucketPass Pass, string DisplayName)
 {
-    Selected,
-    Changed
+    public override string ToString() => DisplayName;
+}
+
+public sealed record BucketDefinitionViewModel(string Category, string Value, string Label);
+
+public enum BucketSelectionAction
+{
+    Invert,
+    SelectUntagged
 }

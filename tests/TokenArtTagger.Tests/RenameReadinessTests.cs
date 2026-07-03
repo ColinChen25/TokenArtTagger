@@ -28,6 +28,17 @@ public sealed class RenameReadinessTests
     }
 
     [TestMethod]
+    public void Evaluate_BlocksIncompatibleRoleAndStyle()
+    {
+        var item = CreateItem(new TagSet("female", "range", "blade", "human"));
+
+        var result = RenameReadiness.Evaluate([item]);
+
+        Assert.IsFalse(result.CanPreview);
+        StringAssert.Contains(result.Message, "range requires bow, gun, or crossbow");
+    }
+
+    [TestMethod]
     public void Evaluate_ExplainsMissingRace()
     {
         var item = CreateItem(new TagSet("male", "melee", "blade", null));

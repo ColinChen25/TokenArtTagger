@@ -9,6 +9,7 @@ public sealed class GitIgnoreTests
     [DataRow("*undo-log*.json")]
     [DataRow("appsettings.Local.json")]
     [DataRow("user-settings.json")]
+    [DataRow("work-in-progress-tags.json")]
     [DataRow("*.jpg")]
     [DataRow("*.jpeg")]
     [DataRow("*.jfif")]

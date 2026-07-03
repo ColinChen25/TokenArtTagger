@@ -12,8 +12,24 @@ public static class TagSchema
     public static readonly IReadOnlyList<string> Roles = ["melee", "range", "caster", "generic"];
     public static readonly IReadOnlyList<string> MeleeStyles = ["blade", "polearm", "dagger", "axe", "mace", "whip", "unarmed", "rare"];
     public static readonly IReadOnlyList<string> RangeStyles = ["bow", "gun", "crossbow"];
-    public static readonly IReadOnlyList<string> CasterStyles = ["wizard", "cleric", "bard"];
-    public static readonly IReadOnlyList<string> Races = ["human", "elf", "halfling", "fairy", "beastfolk", "centaur", "dragon", "other"];
+    public static readonly IReadOnlyList<string> CasterStyles = ["wizard", "cleric", "bard", "druid"];
+    public static readonly IReadOnlyList<string> Races =
+    [
+        "human",
+        "elf",
+        "halfling",
+        "fairy",
+        "beastfolk",
+        "centaur",
+        "dragon",
+        "tiefling",
+        "aasimar",
+        "vampire",
+        "demon",
+        "kitsune",
+        "elemental",
+        "other"
+    ];
 
     public static IEnumerable<TagButtonDefinition> TagButtons()
     {
@@ -54,6 +70,13 @@ public static class TagSchema
 
     public static bool IsKnownRace(string value) => Contains(Races, value);
 
+    public static string NormalizeRace(string value)
+    {
+        return string.Equals(value, "water", StringComparison.OrdinalIgnoreCase)
+            ? "elemental"
+            : value.ToLowerInvariant();
+    }
+
     public static bool IsKnownStyleForRole(string role, string style)
     {
         return role switch
@@ -63,6 +86,25 @@ public static class TagSchema
             "caster" => Contains(CasterStyles, style),
             _ => false
         };
+    }
+
+    public static IReadOnlyList<string> StylesForRole(string role)
+    {
+        return role switch
+        {
+            "melee" => MeleeStyles,
+            "range" => RangeStyles,
+            "caster" => CasterStyles,
+            _ => []
+        };
+    }
+
+    public static string StyleRequirementMessage(string role)
+    {
+        var styles = StylesForRole(role);
+        return styles.Count == 0
+            ? string.Empty
+            : $"{role} requires {string.Join(", ", styles.Take(styles.Count - 1))}{(styles.Count > 1 ? ", or " : string.Empty)}{styles[^1]}";
     }
 
     private static bool Contains(IEnumerable<string> values, string value)

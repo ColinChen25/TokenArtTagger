@@ -11,6 +11,8 @@ public sealed class FilenameParserTests
     [DataRow("female-caster-bard-halfling (75).png", "female", "caster", "bard", "halfling", ".png")]
     [DataRow("female-melee-blade-human.png", "female", "melee", "blade", "human", ".png")]
     [DataRow("male-range-gun-beastfolk.jfif", "male", "range", "gun", "beastfolk", ".jfif")]
+    [DataRow("female-caster-druid-tiefling.png", "female", "caster", "druid", "tiefling", ".png")]
+    [DataRow("female-caster-druid-water (12).png", "female", "caster", "druid", "elemental", ".png")]
     [DataRow("hero.gif", null, null, null, null, ".gif")]
     public void Parse_RecognizesSupportedNamesAndPreservesExtension(string fileName, string? gender, string? role, string? style, string? race, string extension)
     {
@@ -43,5 +45,20 @@ public sealed class FilenameParserTests
         Assert.IsFalse(result.IsRecognized);
         Assert.IsNull(result.Tags.Gender);
         Assert.AreEqual(".jpeg", result.Extension);
+    }
+
+    [TestMethod]
+    [DataRow("tiefling")]
+    [DataRow("aasimar")]
+    [DataRow("vampire")]
+    [DataRow("demon")]
+    [DataRow("kitsune")]
+    [DataRow("elemental")]
+    public void Parse_RecognizesExpandedRaceTags(string race)
+    {
+        var result = FilenameParser.Parse($"male-melee-blade-{race}.jpg");
+
+        Assert.IsTrue(result.IsRecognized);
+        Assert.AreEqual(race, result.Tags.Race);
     }
 }

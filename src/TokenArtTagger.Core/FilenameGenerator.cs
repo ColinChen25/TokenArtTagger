@@ -51,6 +51,13 @@ public static class FilenameGenerator
         {
             errors.Add("weapon/style is required for melee, range, and caster roles");
         }
+        else if (!tags.IsGeneric &&
+            !string.IsNullOrWhiteSpace(tags.Role) &&
+            !string.IsNullOrWhiteSpace(tags.WeaponOrStyle) &&
+            !TagSchema.IsKnownStyleForRole(tags.Role, tags.WeaponOrStyle))
+        {
+            errors.Add(TagSchema.StyleRequirementMessage(tags.Role));
+        }
 
         return errors;
     }

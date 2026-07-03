@@ -26,6 +26,16 @@ public sealed class FilenameGeneratorTests
     }
 
     [TestMethod]
+    public void GenerateName_GeneratesElementalAndDruidTags()
+    {
+        var tags = new TagSet("female", "caster", "druid", "elemental");
+
+        var name = FilenameGenerator.Generate(tags, "abcdef12", ".png");
+
+        Assert.AreEqual("female-caster-druid-elemental__abcdef.png", name);
+    }
+
+    [TestMethod]
     public void GenerateName_RejectsMissingRequiredTags()
     {
         var tags = new TagSet("male", "melee", null, "dragon");
@@ -33,6 +43,26 @@ public sealed class FilenameGeneratorTests
         var error = Assert.ThrowsExactly<InvalidOperationException>(() => FilenameGenerator.Generate(tags, "a2d93c44", ".png"));
 
         StringAssert.Contains(error.Message, "weapon/style");
+    }
+
+    [TestMethod]
+    public void GenerateName_RejectsIncompatibleRoleAndStyle()
+    {
+        var tags = new TagSet("female", "range", "blade", "human");
+
+        var error = Assert.ThrowsExactly<InvalidOperationException>(() => FilenameGenerator.Generate(tags, "a2d93c44", ".png"));
+
+        StringAssert.Contains(error.Message, "range requires bow, gun, or crossbow");
+    }
+
+    [TestMethod]
+    public void GenerateName_AllowsCasterDruid()
+    {
+        var tags = new TagSet("female", "caster", "druid", "human");
+
+        var name = FilenameGenerator.Generate(tags, "a2d93c44", ".png");
+
+        Assert.AreEqual("female-caster-druid-human__a2d93c.png", name);
     }
 
     [TestMethod]

@@ -40,13 +40,13 @@ public static partial class FilenameParser
         var role = parts[1];
         var race = TagSchema.NormalizeRace(FirstToken(parts[2]));
 
-        if (!TagSchema.IsKnownGender(gender) || role != TagSchema.GenericRole || !TagSchema.IsKnownRace(race))
+        if (!TagSchema.IsKnownGender(gender) || role != TagSchema.GenericRole)
         {
             return false;
         }
 
         tags = new TagSet(gender, role, null, race);
-        isValid = true;
+        isValid = TagSchema.IsKnownRace(race);
         return true;
     }
 
@@ -66,14 +66,13 @@ public static partial class FilenameParser
 
         if (!TagSchema.IsKnownGender(gender) ||
             !TagSchema.IsKnownRole(role) ||
-            role == TagSchema.GenericRole ||
-            !TagSchema.IsKnownRace(race))
+            role == TagSchema.GenericRole)
         {
             return false;
         }
 
         tags = new TagSet(gender, role, style, race);
-        isValid = TagSchema.IsKnownStyleForRole(role, style);
+        isValid = TagSchema.IsKnownStyleForRole(role, style) && TagSchema.IsKnownRace(race);
         return true;
     }
 

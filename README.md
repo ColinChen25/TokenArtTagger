@@ -1,4 +1,4 @@
-# TokenArtTagger v0.2.2
+# TokenArtTagger v0.2.3
 
 TokenArtTagger is a small local Windows WPF app for quickly tagging tabletop RPG character art, building partial tags with virtual buckets, and previewing safe in-place renames.
 
@@ -47,7 +47,7 @@ GIF thumbnails show as a still frame. Animated GIFs play in the enlarged inspect
 
 ## Controlled Tags
 
-Filename tags use a controlled vocabulary rather than adding a new filename tag for every one-off weapon or creature detail. Rare outlier weapon names such as `drill` or `chainsaw` normalize to `exotic`; older `rare` filenames remain valid for backward compatibility. Exact one-off details should eventually live in freeform tags when the future database/freeform-tag work lands.
+Filename tags use a controlled vocabulary rather than adding a new filename tag for every one-off weapon or creature detail. Rare outlier weapon names such as `drill` or `chainsaw` normalize to `exotic`; older `rare` filenames normalize to `exotic` for backward compatibility. The `monster` race is available for monstrous humanoid or unclear enemy-creature art that is not cleanly covered by a more specific race tag. Exact one-off details should eventually live in freeform tags when the future database/freeform-tag work lands.
 
 ## Rename Safety
 
@@ -56,6 +56,8 @@ Test on a copied folder before using the real image library.
 The app only renames selected files in place after preview and confirmation. It does not move files, delete files, or rename automatically after tagging. Each rename batch writes a JSON undo log under `%LOCALAPPDATA%\TokenArtTagger\UndoLogs`.
 
 Older `.tokenarttagger-undo` folders in scanned image libraries are left alone. If one is found, the app warns so you can manually archive or remove it later.
+
+Sanitized crash diagnostics, when needed, are written under `%LOCALAPPDATA%\TokenArtTagger\Logs`. These logs are outside the repository and outside scanned image folders; they are not intended to include full image-library paths.
 
 Output filenames use stable content hashes:
 

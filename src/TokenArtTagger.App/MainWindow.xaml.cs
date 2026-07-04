@@ -70,9 +70,17 @@ public partial class MainWindow : Window
 
     private void ImageList_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (_isRectangleSelecting)
+        if (_isRectangleSelecting && _rectangleList is not null)
         {
-            UpdateRubberBand(e.GetPosition(_rectangleList ?? (System.Windows.Controls.ListBox)sender));
+            try
+            {
+                UpdateRubberBand(e.GetPosition(_rectangleList));
+            }
+            catch (InvalidOperationException ex)
+            {
+                CancelRectangleSelection("Rectangle selection was canceled because the grid layout changed.", ex);
+            }
+
             return;
         }
 
@@ -103,7 +111,18 @@ public partial class MainWindow : Window
         }
 
         var list = _rectangleList;
-        var endPoint = e.GetPosition(list);
+        System.Windows.Point endPoint;
+        try
+        {
+            endPoint = e.GetPosition(list);
+        }
+        catch (InvalidOperationException ex)
+        {
+            CancelRectangleSelection("Rectangle selection was canceled because the grid layout changed.", ex);
+            e.Handled = true;
+            return;
+        }
+
         RemoveRubberBand();
         _isRectangleSelecting = false;
         _rectangleList = null;
@@ -116,8 +135,27 @@ public partial class MainWindow : Window
             return;
         }
 
-        SelectByRectangle(list, _rectangleStartPoint, endPoint, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        try
+        {
+            SelectByRectangle(list, _rectangleStartPoint, endPoint, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+        }
+        catch (InvalidOperationException ex)
+        {
+            ViewModel.ShowWarning("Rectangle selection was skipped because the grid changed while selecting.");
+            _ = CrashLogService.WriteCrashLogAsync(ex);
+        }
+
         e.Handled = true;
+    }
+
+    private void CancelRectangleSelection(string message, Exception exception)
+    {
+        RemoveRubberBand();
+        _isRectangleSelecting = false;
+        _rectangleList?.ReleaseMouseCapture();
+        _rectangleList = null;
+        ViewModel.ShowWarning(message);
+        _ = CrashLogService.WriteCrashLogAsync(exception);
     }
 
     private void UpdateRubberBand(System.Windows.Point endPoint)
@@ -342,7 +380,16 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            var bounds = container.TransformToAncestor(list).TransformBounds(new Rect(0, 0, container.ActualWidth, container.ActualHeight));
+            Rect bounds;
+            try
+            {
+                bounds = container.TransformToAncestor(list).TransformBounds(new Rect(0, 0, container.ActualWidth, container.ActualHeight));
+            }
+            catch (InvalidOperationException)
+            {
+                continue;
+            }
+
             tiles.Add(new SelectionTile<ImageItemViewModel>(
                 item,
                 new SelectionRectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height)));

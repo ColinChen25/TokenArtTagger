@@ -17,6 +17,8 @@ public sealed class FilenameParserTests
     [DataRow("female-caster-bard-human__8f21a3.JPG", "female", "caster", "bard", "human", ".JPG")]
     [DataRow("male-melee-blade-tiefling__abcdef.png", "male", "melee", "blade", "tiefling", ".png")]
     [DataRow("female-generic-aasimar__123abc.webp", "female", "generic", null, "aasimar", ".webp")]
+    [DataRow("male-melee-polearm-monster (76).jpg", "male", "melee", "polearm", "monster", ".jpg")]
+    [DataRow("male-melee-rare-human (12).jpg", "male", "melee", "exotic", "human", ".jpg")]
     [DataRow("male-range-bow-elf(86).jpg", "male", "range", "bow", "elf", ".jpg")]
     [DataRow("male-melee-scyth-human(123).jpg", "male", "melee", "scythe", "human", ".jpg")]
     [DataRow("male-melee-scyth-human(124).jpg", "male", "melee", "scythe", "human", ".jpg")]
@@ -72,6 +74,7 @@ public sealed class FilenameParserTests
     [DataRow("mermaid")]
     [DataRow("construct")]
     [DataRow("chimera")]
+    [DataRow("monster")]
     public void Parse_RecognizesExpandedRaceTags(string race)
     {
         var result = FilenameParser.Parse($"male-melee-blade-{race}.jpg");
@@ -88,6 +91,10 @@ public sealed class FilenameParserTests
     [DataRow("male-melee-kama-human.jpg", "melee", "dagger", "human")]
     [DataRow("male-melee-drill-construct.jpg", "melee", "exotic", "construct")]
     [DataRow("male-melee-chainsaw-mecha.jpg", "melee", "exotic", "construct")]
+    [DataRow("male-melee-rare-human.jpg", "melee", "exotic", "human")]
+    [DataRow("male-melee-blade-automaton.jpg", "melee", "blade", "construct")]
+    [DataRow("male-melee-blade-doll.jpg", "melee", "blade", "construct")]
+    [DataRow("male-melee-blade-clockwork.jpg", "melee", "blade", "construct")]
     [DataRow("female-melee-blade-gripple.jpg", "melee", "blade", "grippli")]
     [DataRow("female-caster-druid-water.jpg", "caster", "druid", "elemental")]
     public void Parse_NormalizesLegacyAliases(string fileName, string role, string style, string race)
@@ -110,5 +117,17 @@ public sealed class FilenameParserTests
         Assert.AreEqual("range", result.Tags.Role);
         Assert.AreEqual("blade", result.Tags.WeaponOrStyle);
         Assert.AreEqual("human", result.Tags.Race);
+    }
+
+    [TestMethod]
+    public void Parse_PreservesUnknownLegacyPartsWithoutThrowing()
+    {
+        var result = FilenameParser.Parse("male-melee-lance-minotaur.jpg");
+
+        Assert.IsFalse(result.IsRecognized);
+        Assert.AreEqual("male", result.Tags.Gender);
+        Assert.AreEqual("melee", result.Tags.Role);
+        Assert.AreEqual("lance", result.Tags.WeaponOrStyle);
+        Assert.AreEqual("minotaur", result.Tags.Race);
     }
 }

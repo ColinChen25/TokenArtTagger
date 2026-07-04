@@ -70,7 +70,6 @@ public sealed class FilenameGeneratorTests
     [DataRow("melee", "scythe")]
     [DataRow("melee", "blunt")]
     [DataRow("melee", "exotic")]
-    [DataRow("melee", "rare")]
     [DataRow("range", "thrown")]
     [DataRow("caster", "druid")]
     public void GenerateName_AcceptsExpandedStyleVocabulary(string role, string style)
@@ -85,6 +84,7 @@ public sealed class FilenameGeneratorTests
     [TestMethod]
     [DataRow("melee", "kama", "dagger")]
     [DataRow("melee", "chainsaw", "exotic")]
+    [DataRow("melee", "rare", "exotic")]
     [DataRow("range", "starknife", "thrown")]
     public void GenerateName_NormalizesStyleAliases(string role, string alias, string normalizedStyle)
     {
@@ -93,6 +93,27 @@ public sealed class FilenameGeneratorTests
         var name = FilenameGenerator.Generate(tags, "a2d93c44", ".png");
 
         StringAssert.StartsWith(name, $"female-{role}-{normalizedStyle}-human__a2d93c");
+    }
+
+    [TestMethod]
+    public void GenerateName_AcceptsMonsterRace()
+    {
+        var tags = new TagSet("male", "melee", "polearm", "monster");
+
+        var name = FilenameGenerator.Generate(tags, "a2d93c44", ".jpg");
+
+        Assert.AreEqual("male-melee-polearm-monster__a2d93c.jpg", name);
+    }
+
+    [TestMethod]
+    public void GenerateName_RejectsUnknownLegacyTagsWithoutThrowingDuringValidation()
+    {
+        var tags = new TagSet("male", "melee", "lance", "minotaur");
+
+        var errors = FilenameGenerator.Validate(tags);
+
+        CollectionAssert.Contains(errors.ToList(), "race 'minotaur' is not recognized");
+        Assert.IsTrue(errors.Any(error => error.Contains("melee requires", StringComparison.OrdinalIgnoreCase)));
     }
 
     [TestMethod]

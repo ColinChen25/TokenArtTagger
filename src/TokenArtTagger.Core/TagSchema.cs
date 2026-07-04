@@ -10,7 +10,7 @@ public static class TagSchema
 
     public static readonly IReadOnlyList<string> Genders = ["male", "female"];
     public static readonly IReadOnlyList<string> Roles = ["melee", "range", "caster", "generic"];
-    public static readonly IReadOnlyList<string> MeleeStyles = ["blade", "polearm", "dagger", "axe", "mace", "whip", "unarmed", "flail", "scythe", "blunt", "exotic", "rare"];
+    public static readonly IReadOnlyList<string> MeleeStyles = ["blade", "polearm", "dagger", "axe", "mace", "whip", "unarmed", "flail", "scythe", "blunt", "exotic"];
     public static readonly IReadOnlyList<string> RangeStyles = ["bow", "gun", "crossbow", "thrown"];
     public static readonly IReadOnlyList<string> CasterStyles = ["wizard", "cleric", "bard", "druid"];
     public static readonly IReadOnlyList<string> Races =
@@ -28,6 +28,7 @@ public static class TagSchema
         "mermaid",
         "construct",
         "chimera",
+        "monster",
         "tiefling",
         "aasimar",
         "vampire",
@@ -82,7 +83,7 @@ public static class TagSchema
         {
             "gripple" => "grippli",
             "water" => "elemental",
-            "mecha" or "robot" or "golem" or "android" => "construct",
+            "mecha" or "robot" or "golem" or "android" or "automaton" or "doll" or "clockwork" => "construct",
             var normalized => normalized
         };
     }
@@ -94,7 +95,7 @@ public static class TagSchema
             "scyth" => "scythe",
             "stick" or "baton" or "tonfa" => "blunt",
             "starknife" => "thrown",
-            "drill" or "chainsaw" => "exotic",
+            "drill" or "chainsaw" or "rare" => "exotic",
             "kama" => "dagger",
             var normalized => normalized
         };

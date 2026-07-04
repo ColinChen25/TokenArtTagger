@@ -7,7 +7,7 @@ public static class RectangleSelection
         SelectionRectangle rectangle)
     {
         return tiles
-            .Where(tile => tile.Bounds.Intersects(rectangle))
+            .Where(tile => tile.Bounds.IsValid && tile.Bounds.Intersects(rectangle))
             .Select(tile => tile.Value)
             .ToList();
     }
@@ -22,11 +22,20 @@ public readonly record struct SelectionRectangle(double X, double Y, double Widt
     public double Right => Math.Max(X, X + Width);
     public double Bottom => Math.Max(Y, Y + Height);
 
+    public bool IsValid => IsFinite(X) && IsFinite(Y) && IsFinite(Width) && IsFinite(Height);
+
     public bool Intersects(SelectionRectangle other)
     {
-        return Left <= other.Right &&
+        return IsValid &&
+            other.IsValid &&
+            Left <= other.Right &&
             Right >= other.Left &&
             Top <= other.Bottom &&
             Bottom >= other.Top;
+    }
+
+    private static bool IsFinite(double value)
+    {
+        return !double.IsNaN(value) && !double.IsInfinity(value);
     }
 }

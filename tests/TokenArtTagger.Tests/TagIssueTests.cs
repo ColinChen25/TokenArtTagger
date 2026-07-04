@@ -24,4 +24,13 @@ public sealed class TagIssueTests
         Assert.AreEqual(TagIssueKind.None, result.Kind);
         Assert.AreEqual(string.Empty, result.Message);
     }
+
+    [TestMethod]
+    public void Evaluate_TreatsUnknownLegacyTagAsInvalid()
+    {
+        var result = TagIssue.Evaluate(new TagSet("male", "melee", "lance", "minotaur"));
+
+        Assert.AreEqual(TagIssueKind.Invalid, result.Kind);
+        StringAssert.Contains(result.Message, "minotaur");
+    }
 }

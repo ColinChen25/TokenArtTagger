@@ -34,6 +34,20 @@ public readonly record struct SelectionRectangle(double X, double Y, double Widt
             Bottom >= other.Top;
     }
 
+    public SelectionRectangle ClampTo(SelectionRectangle bounds)
+    {
+        if (!IsValid || !bounds.IsValid)
+        {
+            return new SelectionRectangle(double.NaN, double.NaN, double.NaN, double.NaN);
+        }
+
+        var left = Math.Clamp(Left, bounds.Left, bounds.Right);
+        var right = Math.Clamp(Right, bounds.Left, bounds.Right);
+        var top = Math.Clamp(Top, bounds.Top, bounds.Bottom);
+        var bottom = Math.Clamp(Bottom, bounds.Top, bounds.Bottom);
+        return new SelectionRectangle(left, top, right - left, bottom - top);
+    }
+
     private static bool IsFinite(double value)
     {
         return !double.IsNaN(value) && !double.IsInfinity(value);

@@ -1,4 +1,4 @@
-# TokenArtTagger v0.2.3
+# TokenArtTagger v0.2.4
 
 TokenArtTagger is a small local Windows WPF app for quickly tagging tabletop RPG character art, building partial tags with virtual buckets, and previewing safe in-place renames.
 

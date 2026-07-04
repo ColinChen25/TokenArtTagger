@@ -37,15 +37,27 @@ public static class FilenameGenerator
         {
             errors.Add("gender is required");
         }
+        else if (!TagSchema.IsKnownGender(tags.Gender))
+        {
+            errors.Add($"gender '{tags.Gender}' is not recognized");
+        }
 
         if (string.IsNullOrWhiteSpace(tags.Role))
         {
             errors.Add("role is required");
         }
+        else if (!TagSchema.IsKnownRole(tags.Role))
+        {
+            errors.Add($"role '{tags.Role}' is not recognized");
+        }
 
         if (string.IsNullOrWhiteSpace(tags.Race))
         {
             errors.Add("race is required");
+        }
+        else if (!TagSchema.IsKnownRace(tags.Race))
+        {
+            errors.Add($"race '{tags.Race}' is not recognized");
         }
 
         if (!tags.IsGeneric && string.IsNullOrWhiteSpace(tags.WeaponOrStyle))

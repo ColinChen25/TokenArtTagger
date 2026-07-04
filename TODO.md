@@ -18,3 +18,4 @@
 - Add an explicit dry-run export for rename previews.
 - Add a visible warning when scanning a Google Drive path with many selected files.
 - Add batch-size confirmation thresholds before large rename operations.
+- Add an in-app diagnostics viewer or copy button for sanitized crash logs.

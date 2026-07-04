@@ -18,6 +18,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _appliedFilterText = string.Empty;
     private string _statusMessage = "Choose a folder to begin.";
     private string _renameBlockReason = "Select one or more images before previewing or renaming.";
+    private bool _isScanReminderActive;
     private bool _isStatusWarning;
     private int _statusWarningGeneration;
     private RenamePreview? _lastPreview;
@@ -120,7 +121,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _folderPath, value))
             {
-                RaiseCommandStates();
+                RaiseAllCommandStates();
             }
         }
     }
@@ -147,6 +148,12 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _isStatusWarning;
         private set => SetProperty(ref _isStatusWarning, value);
+    }
+
+    public bool IsScanReminderActive
+    {
+        get => _isScanReminderActive;
+        private set => SetProperty(ref _isScanReminderActive, value);
     }
 
     public string RenameBlockReason
@@ -214,7 +221,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedDefaultBucketValue, value))
             {
-                RaiseCommandStates();
+                ApplyDefaultToPageCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -255,6 +262,7 @@ public sealed class MainViewModel : ViewModelBase
 
     public async Task ScanAsync()
     {
+        IsScanReminderActive = false;
         SetStatus("Scanning...");
         _lastPreview = null;
         _lastPreviewScope = null;
@@ -285,7 +293,7 @@ public sealed class MainViewModel : ViewModelBase
             : $"Scanned {Items.Count} images with {result.Errors.Count} errors.{parseWarning}{legacyUndoWarning}",
             isWarning: result.Errors.Count > 0 || legacyUndoWarning.Length > 0 || parseFailures > 0);
         UpdateRenameReadiness();
-        RaiseCommandStates();
+        RaiseAllCommandStates();
     }
 
     public void ReplaceSelection(IEnumerable<ImageItemViewModel> selectedItems)
@@ -301,7 +309,7 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(SelectedItem));
         OnPropertyChanged(nameof(SelectionCountText));
         UpdateRenameReadiness();
-        RaiseCommandStates();
+        RaiseSelectionCommandStates();
     }
 
     public void ReplaceBucketSelection(IEnumerable<ImageItemViewModel> selectedItems)
@@ -313,7 +321,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(BucketSelectionCountText));
-        RaiseCommandStates();
+        RaiseBucketSelectionCommandStates();
     }
 
     public void ApplyTag(TagButtonViewModel tag)
@@ -351,7 +359,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             SetStatus(readiness.Message, isWarning: true);
             RenameBlockReason = readiness.Message;
-            RaiseCommandStates();
+            RaiseSelectionCommandStates();
             return;
         }
 
@@ -400,7 +408,7 @@ public sealed class MainViewModel : ViewModelBase
             : $"Preview found {errors} issue(s). Fix missing tags or conflicts before renaming.",
             isWarning: errors > 0);
         RenameBlockReason = _lastPreview.CanRename ? "Ready to rename selected preview." : "Preview has issues.";
-        RaiseCommandStates();
+        RaiseSelectionCommandStates();
     }
 
     private async Task RenameSelectedAsync()
@@ -593,7 +601,7 @@ public sealed class MainViewModel : ViewModelBase
         _ = SaveWorkInProgressAsync();
         RefreshBucketPage();
         UpdateRenameReadiness();
-        RaiseCommandStates();
+        RaiseAllCommandStates();
     }
 
     private void RefreshBucketDefinitions()
@@ -634,7 +642,7 @@ public sealed class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(BucketPageCount));
         OnPropertyChanged(nameof(BucketPageText));
         OnPropertyChanged(nameof(BucketSelectionCountText));
-        RaiseCommandStates();
+        RaiseAllCommandStates();
     }
 
     private void MoveBucketPage(int offset)
@@ -711,6 +719,9 @@ public sealed class MainViewModel : ViewModelBase
         if (dialog.ShowDialog() == WinForms.DialogResult.OK)
         {
             FolderPath = dialog.SelectedPath;
+            IsScanReminderActive = true;
+            SetStatus("Folder selected. Click Scan Folder to load images.");
+            RaiseAllCommandStates();
         }
     }
 
@@ -768,21 +779,32 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
-    private void RaiseCommandStates()
+    private void RaiseAllCommandStates()
     {
         ScanCommand.RaiseCanExecuteChanged();
-        PreviewRenameCommand.RaiseCanExecuteChanged();
         PreviewChangedCommand.RaiseCanExecuteChanged();
         CancelPreviewCommand.RaiseCanExecuteChanged();
-        RenameSelectedCommand.RaiseCanExecuteChanged();
         ApplyDefaultToPageCommand.RaiseCanExecuteChanged();
-        ClearSelectedTemporaryTagsCommand.RaiseCanExecuteChanged();
         ClearCurrentBucketPassTagsCommand.RaiseCanExecuteChanged();
         ClearAllTemporaryTagsCommand.RaiseCanExecuteChanged();
         NextBucketPageCommand.RaiseCanExecuteChanged();
         PreviousBucketPageCommand.RaiseCanExecuteChanged();
         InvertBucketSelectionCommand.RaiseCanExecuteChanged();
         SelectUntaggedBucketCommand.RaiseCanExecuteChanged();
+        RaiseSelectionCommandStates();
+        RaiseBucketSelectionCommandStates();
+    }
+
+    private void RaiseSelectionCommandStates()
+    {
+        PreviewRenameCommand.RaiseCanExecuteChanged();
+        RenameSelectedCommand.RaiseCanExecuteChanged();
+        ClearSelectedTemporaryTagsCommand.RaiseCanExecuteChanged();
+    }
+
+    private void RaiseBucketSelectionCommandStates()
+    {
+        ApplyBucketCommand.RaiseCanExecuteChanged();
     }
 
     private IReadOnlyList<ImageItem> CurrentSelectedItems()

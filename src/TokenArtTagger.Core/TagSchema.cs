@@ -10,8 +10,8 @@ public static class TagSchema
 
     public static readonly IReadOnlyList<string> Genders = ["male", "female"];
     public static readonly IReadOnlyList<string> Roles = ["melee", "range", "caster", "generic"];
-    public static readonly IReadOnlyList<string> MeleeStyles = ["blade", "polearm", "dagger", "axe", "mace", "whip", "unarmed", "rare"];
-    public static readonly IReadOnlyList<string> RangeStyles = ["bow", "gun", "crossbow"];
+    public static readonly IReadOnlyList<string> MeleeStyles = ["blade", "polearm", "dagger", "axe", "mace", "whip", "unarmed", "flail", "scythe", "blunt", "exotic", "rare"];
+    public static readonly IReadOnlyList<string> RangeStyles = ["bow", "gun", "crossbow", "thrown"];
     public static readonly IReadOnlyList<string> CasterStyles = ["wizard", "cleric", "bard", "druid"];
     public static readonly IReadOnlyList<string> Races =
     [
@@ -22,6 +22,12 @@ public static class TagSchema
         "beastfolk",
         "centaur",
         "dragon",
+        "dwarf",
+        "grippli",
+        "oread",
+        "mermaid",
+        "construct",
+        "chimera",
         "tiefling",
         "aasimar",
         "vampire",
@@ -72,18 +78,36 @@ public static class TagSchema
 
     public static string NormalizeRace(string value)
     {
-        return string.Equals(value, "water", StringComparison.OrdinalIgnoreCase)
-            ? "elemental"
-            : value.ToLowerInvariant();
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "gripple" => "grippli",
+            "water" => "elemental",
+            "mecha" or "robot" or "golem" or "android" => "construct",
+            var normalized => normalized
+        };
+    }
+
+    public static string NormalizeStyle(string value)
+    {
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "scyth" => "scythe",
+            "stick" or "baton" or "tonfa" => "blunt",
+            "starknife" => "thrown",
+            "drill" or "chainsaw" => "exotic",
+            "kama" => "dagger",
+            var normalized => normalized
+        };
     }
 
     public static bool IsKnownStyleForRole(string role, string style)
     {
+        var normalizedStyle = NormalizeStyle(style);
         return role switch
         {
-            "melee" => Contains(MeleeStyles, style),
-            "range" => Contains(RangeStyles, style),
-            "caster" => Contains(CasterStyles, style),
+            "melee" => Contains(MeleeStyles, normalizedStyle),
+            "range" => Contains(RangeStyles, normalizedStyle),
+            "caster" => Contains(CasterStyles, normalizedStyle),
             _ => false
         };
     }

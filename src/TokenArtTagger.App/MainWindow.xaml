@@ -3,16 +3,21 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:TokenArtTagger.App"
         xmlns:vm="clr-namespace:TokenArtTagger.App.ViewModels"
         mc:Ignorable="d"
         Title="{Binding AppTitle}" Height="860" MinHeight="680" Width="1380" MinWidth="1060"
         Background="#F4F3EF"
-        PreviewKeyDown="Window_PreviewKeyDown">
+        PreviewKeyDown="Window_PreviewKeyDown"
+        SizeChanged="Window_SizeChanged"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
 
     <Window.Resources>
+        <local:StringIsNullOrWhiteSpaceToVisibilityConverter x:Key="StringIsNullOrWhiteSpaceToVisibilityConverter" />
         <Style x:Key="PanelTitle" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="FontSize" Value="14" />
@@ -23,6 +28,8 @@
             <Setter Property="MinHeight" Value="32" />
             <Setter Property="Padding" Value="12,5" />
             <Setter Property="Margin" Value="4,0,0,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
         </Style>
         <Style x:Key="TagButton" TargetType="Button">
             <Setter Property="MinWidth" Value="78" />
@@ -46,6 +53,17 @@
             <Setter Property="Padding" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+        </Style>
+        <Style x:Key="SelectableDetailText" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Margin" Value="0,4,0,12" />
         </Style>
         <DataTemplate x:Key="ImageTileTemplate" DataType="{x:Type vm:ImageItemViewModel}">
             <Border Background="#FAFAF7" CornerRadius="6" Padding="8"
@@ -55,7 +73,11 @@
                     <Style TargetType="Border">
                         <Setter Property="BorderBrush" Value="#DDD7CE" />
                         <Setter Property="BorderThickness" Value="1" />
+                        <Setter Property="Background" Value="#FAFAF7" />
                         <Style.Triggers>
+                            <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
+                                <Setter Property="Background" Value="#EEF6FF" />
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding HasIncompleteTags}" Value="True">
                                 <Setter Property="BorderBrush" Value="#B7791F" />
                                 <Setter Property="BorderThickness" Value="2" />
@@ -151,8 +173,15 @@
                     Command="{Binding BrowseCommand}" />
             <TextBox Grid.Column="1" MinHeight="32" VerticalContentAlignment="Center"
                      Text="{Binding FolderPath, UpdateSourceTrigger=PropertyChanged}" />
-            <TextBox Grid.Column="2" MinHeight="32" Margin="8,0,0,0" VerticalContentAlignment="Center"
-                     Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" />
+            <Grid Grid.Column="2" Margin="8,0,0,0">
+                <TextBox MinHeight="32" VerticalContentAlignment="Center"
+                         Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock Text="Search filenames/tags..." Margin="8,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="#777777"
+                           IsHitTestVisible="False"
+                           Visibility="{Binding FilterText, Converter={StaticResource StringIsNullOrWhiteSpaceToVisibilityConverter}}" />
+            </Grid>
             <StackPanel Grid.Column="3" Orientation="Horizontal">
                 <Button Style="{StaticResource ToolButton}" Content="Scan Folder" Command="{Binding ScanCommand}" />
                 <Button Style="{StaticResource ToolButton}" Content="Preview Selected" Command="{Binding PreviewRenameCommand}" />
@@ -176,37 +205,28 @@
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="Tags" Style="{StaticResource PanelTitle}" />
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <ItemsControl ItemsSource="{Binding TagButtonsView}">
-                                    <ItemsControl.GroupStyle>
-                                        <GroupStyle>
-                                            <GroupStyle.ContainerStyle>
-                                                <Style TargetType="{x:Type GroupItem}">
-                                                    <Setter Property="Template">
-                                                        <Setter.Value>
-                                                            <ControlTemplate TargetType="{x:Type GroupItem}">
-                                                                <GroupBox Header="{Binding Name}" Margin="0,0,0,10" Padding="8">
-                                                                    <ItemsPresenter />
-                                                                </GroupBox>
-                                                            </ControlTemplate>
-                                                        </Setter.Value>
-                                                    </Setter>
-                                                </Style>
-                                            </GroupStyle.ContainerStyle>
-                                            <GroupStyle.Panel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel />
-                                                </ItemsPanelTemplate>
-                                            </GroupStyle.Panel>
-                                        </GroupStyle>
-                                    </ItemsControl.GroupStyle>
+                                <ItemsControl ItemsSource="{Binding TagButtonGroups}">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type vm:TagButtonViewModel}">
-                                            <Button Style="{StaticResource TagButton}"
-                                                    Command="{Binding DataContext.ApplyTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                    CommandParameter="{Binding}"
-                                                    ToolTip="{Binding Group}">
-                                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextAlignment="Center" />
-                                            </Button>
+                                        <DataTemplate DataType="{x:Type vm:TagButtonGroupViewModel}">
+                                            <GroupBox Header="{Binding Name}" Margin="0,0,0,10" Padding="8">
+                                                <ItemsControl ItemsSource="{Binding Buttons}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate DataType="{x:Type vm:TagButtonViewModel}">
+                                                            <Button Style="{StaticResource TagButton}"
+                                                                    Command="{Binding DataContext.ApplyTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                    CommandParameter="{Binding}"
+                                                                    ToolTip="{Binding Group}">
+                                                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextAlignment="Center" />
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <WrapPanel />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                </ItemsControl>
+                                            </GroupBox>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
@@ -251,17 +271,18 @@
                                 <StackPanel>
                                     <TextBlock Text="{Binding SelectionCountText}" FontWeight="SemiBold" Margin="0,0,0,10" />
                                     <StackPanel DataContext="{Binding SelectedItem}">
-                                        <TextBlock Text="{Binding FullPath}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                                        <TextBox Text="{Binding FullPath}" Style="{StaticResource SelectableDetailText}" FontWeight="SemiBold" />
+                                        <Button Style="{StaticResource ToolButton}" Margin="0,0,0,6" Content="Show in Explorer" Click="ShowSelectedInExplorer_Click" />
                                         <Separator Margin="0,12" />
                                         <TextBlock Text="Current filename" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding FileName}" TextWrapping="Wrap" Margin="0,4,0,12" />
+                                        <TextBox Text="{Binding FileName}" Style="{StaticResource SelectableDetailText}" />
                                         <TextBlock Text="Parsed tags" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding ParsedTagsText}" TextWrapping="Wrap" Margin="0,4,0,12" />
+                                        <TextBox Text="{Binding ParsedTagsText}" Style="{StaticResource SelectableDetailText}" />
                                         <TextBlock Text="Current tags" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding CurrentTagsText}" TextWrapping="Wrap" Margin="0,4,0,12" />
+                                        <TextBox Text="{Binding CurrentTagsText}" Style="{StaticResource SelectableDetailText}" />
                                         <TextBlock Text="Proposed filename" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding ProposedFileName}" TextWrapping="Wrap" Margin="0,4,0,12" Foreground="#245C37" />
-                                        <TextBlock Text="{Binding PreviewError}" TextWrapping="Wrap" Foreground="#9C1F1F" />
+                                        <TextBox Text="{Binding ProposedFileName}" Style="{StaticResource SelectableDetailText}" Foreground="#245C37" />
+                                        <TextBox Text="{Binding PreviewError}" Style="{StaticResource SelectableDetailText}" Foreground="#9C1F1F" />
                                     </StackPanel>
                                     <Separator Margin="0,12" />
                                     <WrapPanel Margin="0,0,0,12">

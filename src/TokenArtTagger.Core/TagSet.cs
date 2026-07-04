@@ -17,7 +17,7 @@ public sealed record TagSet(
         {
             TagSchema.GenderCategory => this with { Gender = normalizedValue },
             TagSchema.RoleCategory => WithRole(normalizedValue),
-            TagSchema.StyleCategory => this with { WeaponOrStyle = normalizedValue },
+            TagSchema.StyleCategory => this with { WeaponOrStyle = TagSchema.NormalizeStyle(normalizedValue) },
             TagSchema.RaceCategory => this with { Race = TagSchema.NormalizeRace(normalizedValue) },
             _ => this
         };

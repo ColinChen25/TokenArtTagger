@@ -35,7 +35,7 @@ public sealed class RenameReadinessTests
         var result = RenameReadiness.Evaluate([item]);
 
         Assert.IsFalse(result.CanPreview);
-        StringAssert.Contains(result.Message, "range requires bow, gun, or crossbow");
+        StringAssert.Contains(result.Message, "range requires bow, gun, crossbow, or thrown");
     }
 
     [TestMethod]

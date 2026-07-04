@@ -52,7 +52,7 @@ public sealed class FilenameGeneratorTests
 
         var error = Assert.ThrowsExactly<InvalidOperationException>(() => FilenameGenerator.Generate(tags, "a2d93c44", ".png"));
 
-        StringAssert.Contains(error.Message, "range requires bow, gun, or crossbow");
+        StringAssert.Contains(error.Message, "range requires bow, gun, crossbow, or thrown");
     }
 
     [TestMethod]
@@ -63,6 +63,36 @@ public sealed class FilenameGeneratorTests
         var name = FilenameGenerator.Generate(tags, "a2d93c44", ".png");
 
         Assert.AreEqual("female-caster-druid-human__a2d93c.png", name);
+    }
+
+    [TestMethod]
+    [DataRow("melee", "flail")]
+    [DataRow("melee", "scythe")]
+    [DataRow("melee", "blunt")]
+    [DataRow("melee", "exotic")]
+    [DataRow("melee", "rare")]
+    [DataRow("range", "thrown")]
+    [DataRow("caster", "druid")]
+    public void GenerateName_AcceptsExpandedStyleVocabulary(string role, string style)
+    {
+        var tags = new TagSet("female", role, style, "chimera");
+
+        var name = FilenameGenerator.Generate(tags, "a2d93c44", ".png");
+
+        StringAssert.StartsWith(name, $"female-{role}-{style}-chimera__a2d93c");
+    }
+
+    [TestMethod]
+    [DataRow("melee", "kama", "dagger")]
+    [DataRow("melee", "chainsaw", "exotic")]
+    [DataRow("range", "starknife", "thrown")]
+    public void GenerateName_NormalizesStyleAliases(string role, string alias, string normalizedStyle)
+    {
+        var tags = new TagSet("female", role, alias, "human");
+
+        var name = FilenameGenerator.Generate(tags, "a2d93c44", ".png");
+
+        StringAssert.StartsWith(name, $"female-{role}-{normalizedStyle}-human__a2d93c");
     }
 
     [TestMethod]

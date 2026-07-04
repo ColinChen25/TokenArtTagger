@@ -35,7 +35,7 @@ public sealed class ImageItemViewModel : ViewModelBase
 
     public bool HasInvalidTags => TagIssue.Kind == TagIssueKind.Invalid;
 
-    public bool HasRenameBlockingIssue => HasIncompleteTags || HasInvalidTags || !string.IsNullOrWhiteSpace(PreviewError);
+    public bool HasRenameBlockingIssue => HasInvalidTags || !string.IsNullOrWhiteSpace(PreviewError);
 
     public string TagIssueMessage => string.IsNullOrWhiteSpace(PreviewError)
         ? TagIssue.Message

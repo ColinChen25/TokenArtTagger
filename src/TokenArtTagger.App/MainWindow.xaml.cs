@@ -1,4 +1,5 @@
 using System.IO;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -6,6 +7,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using TokenArtTagger.Core;
 using TokenArtTagger.App.ViewModels;
 
@@ -22,6 +24,8 @@ public partial class MainWindow : Window
     private System.Windows.Point? _inspectorPanStart;
     private double _inspectorPanStartX;
     private double _inspectorPanStartY;
+    private CancellationTokenSource? _resizeQuietCancellation;
+    private bool _isResizing;
 
     public MainWindow()
     {
@@ -179,9 +183,55 @@ public partial class MainWindow : Window
 
     private async void ThumbnailImage_Loaded(object sender, RoutedEventArgs e)
     {
-        if (sender is System.Windows.Controls.Image { DataContext: ImageItemViewModel item })
+        if (sender is System.Windows.Controls.Image { DataContext: ImageItemViewModel item } image)
         {
+            while (_isResizing && image.IsLoaded)
+            {
+                await Task.Delay(250);
+            }
+
+            if (!image.IsLoaded)
+            {
+                return;
+            }
+
             await ViewModel.LoadThumbnailAsync(item);
+        }
+    }
+
+    private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        _isResizing = true;
+        _resizeQuietCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        _resizeQuietCancellation = cancellation;
+        _ = MarkResizeQuietAfterDelayAsync(cancellation);
+    }
+
+    private async Task MarkResizeQuietAfterDelayAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(250, cancellation.Token);
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (!cancellation.IsCancellationRequested)
+                {
+                    _isResizing = false;
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_resizeQuietCancellation, cancellation))
+            {
+                _resizeQuietCancellation = null;
+            }
+
+            cancellation.Dispose();
         }
     }
 
@@ -217,6 +267,36 @@ public partial class MainWindow : Window
 
         OpenImageInspector(item);
         e.Handled = true;
+    }
+
+    private void ShowSelectedInExplorer_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = ViewModel.SelectedItem;
+        if (selected is null)
+        {
+            ViewModel.ShowWarning("Select an image before opening File Explorer.");
+            return;
+        }
+
+        if (!File.Exists(selected.FullPath))
+        {
+            ViewModel.ShowWarning("The selected file is unavailable or has been moved.");
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{selected.FullPath}\"",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            ViewModel.ShowWarning($"Could not open File Explorer: {ex.Message}");
+        }
     }
 
     private void HandleBucketSelectionAction(BucketSelectionAction action)
@@ -291,7 +371,13 @@ public partial class MainWindow : Window
     {
         try
         {
-            var source = LoadInspectorImage(item.FullPath);
+            var frames = LoadInspectorFrames(item.FullPath);
+            if (frames.Count == 0)
+            {
+                ViewModel.ShowWarning("Could not open image preview: no decodable image frames were found.");
+                return;
+            }
+
             var scale = new ScaleTransform(1, 1);
             var translate = new TranslateTransform();
             var transforms = new TransformGroup();
@@ -300,11 +386,13 @@ public partial class MainWindow : Window
 
             var image = new System.Windows.Controls.Image
             {
-                Source = source,
+                Source = frames[0],
                 Stretch = Stretch.Uniform,
                 RenderTransform = transforms,
                 RenderTransformOrigin = new System.Windows.Point(0.5, 0.5)
             };
+            DispatcherTimer? animationTimer = null;
+            var frameIndex = 0;
             var host = new Grid
             {
                 Background = System.Windows.Media.Brushes.Black,
@@ -329,6 +417,20 @@ public partial class MainWindow : Window
                     window.Close();
                 }
             };
+            window.Closed += (_, _) => animationTimer?.Stop();
+            if (frames.Count > 1)
+            {
+                animationTimer = new DispatcherTimer(DispatcherPriority.Background)
+                {
+                    Interval = TimeSpan.FromMilliseconds(100)
+                };
+                animationTimer.Tick += (_, _) =>
+                {
+                    frameIndex = (frameIndex + 1) % frames.Count;
+                    image.Source = frames[frameIndex];
+                };
+                animationTimer.Start();
+            }
             host.MouseRightButtonUp += (_, _) => window.Close();
             host.MouseWheel += (_, args) =>
             {
@@ -369,15 +471,18 @@ public partial class MainWindow : Window
         }
     }
 
-    private static BitmapImage LoadInspectorImage(string path)
+    private static IReadOnlyList<ImageSource> LoadInspectorFrames(string path)
     {
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit();
-        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.UriSource = new Uri(path, UriKind.Absolute);
-        bitmap.EndInit();
-        bitmap.Freeze();
-        return bitmap;
+        using var stream = File.OpenRead(path);
+        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        var frames = new List<ImageSource>();
+        foreach (var frame in decoder.Frames)
+        {
+            frame.Freeze();
+            frames.Add(frame);
+        }
+
+        return frames;
     }
 
     private static bool IsFromScrollBar(DependencyObject? source)

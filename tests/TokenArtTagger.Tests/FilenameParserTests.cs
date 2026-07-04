@@ -17,6 +17,14 @@ public sealed class FilenameParserTests
     [DataRow("female-caster-bard-human__8f21a3.JPG", "female", "caster", "bard", "human", ".JPG")]
     [DataRow("male-melee-blade-tiefling__abcdef.png", "male", "melee", "blade", "tiefling", ".png")]
     [DataRow("female-generic-aasimar__123abc.webp", "female", "generic", null, "aasimar", ".webp")]
+    [DataRow("male-range-bow-elf(86).jpg", "male", "range", "bow", "elf", ".jpg")]
+    [DataRow("male-melee-scyth-human(123).jpg", "male", "melee", "scythe", "human", ".jpg")]
+    [DataRow("male-melee-scyth-human(124).jpg", "male", "melee", "scythe", "human", ".jpg")]
+    [DataRow("male-melee-flail-human (82).PNG", "male", "melee", "flail", "human", ".PNG")]
+    [DataRow("male-melee-mace-dwarf (21).png", "male", "melee", "mace", "dwarf", ".png")]
+    [DataRow("male-melee-flail-human (119).jpg", "male", "melee", "flail", "human", ".jpg")]
+    [DataRow("male-melee-flail-human (240).jpg", "male", "melee", "flail", "human", ".jpg")]
+    [DataRow("male-melee-blade-human narukami.png", "male", "melee", "blade", "human", ".png")]
     [DataRow("hero.gif", null, null, null, null, ".gif")]
     public void Parse_RecognizesSupportedNamesAndPreservesExtension(string fileName, string? gender, string? role, string? style, string? race, string extension)
     {
@@ -58,11 +66,49 @@ public sealed class FilenameParserTests
     [DataRow("demon")]
     [DataRow("kitsune")]
     [DataRow("elemental")]
+    [DataRow("dwarf")]
+    [DataRow("grippli")]
+    [DataRow("oread")]
+    [DataRow("mermaid")]
+    [DataRow("construct")]
+    [DataRow("chimera")]
     public void Parse_RecognizesExpandedRaceTags(string race)
     {
         var result = FilenameParser.Parse($"male-melee-blade-{race}.jpg");
 
         Assert.IsTrue(result.IsRecognized);
         Assert.AreEqual(race, result.Tags.Race);
+    }
+
+    [TestMethod]
+    [DataRow("male-melee-stick-human.jpg", "melee", "blunt", "human")]
+    [DataRow("male-melee-baton-human.jpg", "melee", "blunt", "human")]
+    [DataRow("male-melee-tonfa-human.jpg", "melee", "blunt", "human")]
+    [DataRow("male-range-starknife-human.jpg", "range", "thrown", "human")]
+    [DataRow("male-melee-kama-human.jpg", "melee", "dagger", "human")]
+    [DataRow("male-melee-drill-construct.jpg", "melee", "exotic", "construct")]
+    [DataRow("male-melee-chainsaw-mecha.jpg", "melee", "exotic", "construct")]
+    [DataRow("female-melee-blade-gripple.jpg", "melee", "blade", "grippli")]
+    [DataRow("female-caster-druid-water.jpg", "caster", "druid", "elemental")]
+    public void Parse_NormalizesLegacyAliases(string fileName, string role, string style, string race)
+    {
+        var result = FilenameParser.Parse(fileName);
+
+        Assert.IsTrue(result.IsRecognized);
+        Assert.AreEqual(role, result.Tags.Role);
+        Assert.AreEqual(style, result.Tags.WeaponOrStyle);
+        Assert.AreEqual(race, result.Tags.Race);
+    }
+
+    [TestMethod]
+    public void Parse_PreservesInvalidStructuredTagsForVisualWarning()
+    {
+        var result = FilenameParser.Parse("male-range-blade-human.jpg");
+
+        Assert.IsFalse(result.IsRecognized);
+        Assert.AreEqual("male", result.Tags.Gender);
+        Assert.AreEqual("range", result.Tags.Role);
+        Assert.AreEqual("blade", result.Tags.WeaponOrStyle);
+        Assert.AreEqual("human", result.Tags.Race);
     }
 }

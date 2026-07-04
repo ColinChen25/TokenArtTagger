@@ -15,6 +15,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly WorkInProgressTagStore _workInProgressStore = WorkInProgressTagStore.CreateDefault();
     private string _folderPath = string.Empty;
     private string _filterText = string.Empty;
+    private string _appliedFilterText = string.Empty;
     private string _statusMessage = "Choose a folder to begin.";
     private string _renameBlockReason = "Select one or more images before previewing or renaming.";
     private bool _isStatusWarning;
@@ -22,6 +23,7 @@ public sealed class MainViewModel : ViewModelBase
     private RenamePreview? _lastPreview;
     private RenamePreviewScope? _lastPreviewScope;
     private CancellationTokenSource? _previewCancellation;
+    private CancellationTokenSource? _filterRefreshCancellation;
     private BucketPassOptionViewModel _selectedBucketPass;
     private BucketFilterMode _selectedBucketFilter = BucketFilterMode.MissingOnly;
     private int _bucketPageSize = 100;
@@ -34,8 +36,11 @@ public sealed class MainViewModel : ViewModelBase
         ItemsView.Filter = FilterItem;
         TagButtons = new ObservableCollection<TagButtonViewModel>(
             TagSchema.TagButtons().Select(tag => new TagButtonViewModel(tag.Category, tag.Value, tag.Group)));
+        TagButtonGroups = new ObservableCollection<TagButtonGroupViewModel>(
+            TagButtons
+                .GroupBy(tag => tag.Group)
+                .Select(group => new TagButtonGroupViewModel(group.Key, group.ToList())));
         TagButtonsView = CollectionViewSource.GetDefaultView(TagButtons);
-        TagButtonsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(TagButtonViewModel.Group)));
 
         BucketPasses = new ObservableCollection<BucketPassOptionViewModel>(
             Enum.GetValues<BucketPass>().Select(pass => new BucketPassOptionViewModel(pass, BucketPassDefinition.For(pass).DisplayName)));
@@ -77,6 +82,8 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<ImageItemViewModel> BucketSelectedItems { get; } = [];
 
     public ObservableCollection<TagButtonViewModel> TagButtons { get; }
+
+    public ObservableCollection<TagButtonGroupViewModel> TagButtonGroups { get; }
 
     public ICollectionView TagButtonsView { get; }
 
@@ -125,7 +132,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _filterText, value))
             {
-                ItemsView.Refresh();
+                QueueFilterRefresh();
             }
         }
     }
@@ -269,10 +276,14 @@ public sealed class MainViewModel : ViewModelBase
         var legacyUndoWarning = UndoLogService.HasLegacyUndoFolder(FolderPath)
             ? $" Legacy undo folder found at {UndoLogService.LegacyUndoFolderName}; new undo logs now go to app data."
             : string.Empty;
+        var parseFailures = Items.Count(item => !item.Item.IsRecognized);
+        var parseWarning = parseFailures > 0
+            ? $" {parseFailures} filename(s) need tags or parser review."
+            : string.Empty;
         SetStatus(result.Errors.Count == 0
-            ? $"Scanned {Items.Count} images.{legacyUndoWarning}"
-            : $"Scanned {Items.Count} images with {result.Errors.Count} errors.{legacyUndoWarning}",
-            isWarning: result.Errors.Count > 0 || legacyUndoWarning.Length > 0);
+            ? $"Scanned {Items.Count} images.{parseWarning}{legacyUndoWarning}"
+            : $"Scanned {Items.Count} images with {result.Errors.Count} errors.{parseWarning}{legacyUndoWarning}",
+            isWarning: result.Errors.Count > 0 || legacyUndoWarning.Length > 0 || parseFailures > 0);
         UpdateRenameReadiness();
         RaiseCommandStates();
     }
@@ -710,14 +721,51 @@ public sealed class MainViewModel : ViewModelBase
 
     private bool FilterItem(object candidate)
     {
-        if (candidate is not ImageItemViewModel item || string.IsNullOrWhiteSpace(FilterText))
+        if (candidate is not ImageItemViewModel item || string.IsNullOrWhiteSpace(_appliedFilterText))
         {
             return true;
         }
 
-        return item.FileName.Contains(FilterText, StringComparison.OrdinalIgnoreCase) ||
-            item.CurrentTagsText.Contains(FilterText, StringComparison.OrdinalIgnoreCase) ||
-            item.FullPath.Contains(FilterText, StringComparison.OrdinalIgnoreCase);
+        return ImageSearchMatcher.Matches(item.Item, _appliedFilterText);
+    }
+
+    private void QueueFilterRefresh()
+    {
+        _filterRefreshCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        _filterRefreshCancellation = cancellation;
+        _ = ApplyFilterAfterDelayAsync(cancellation);
+    }
+
+    private async Task ApplyFilterAfterDelayAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), cancellation.Token);
+            var filterText = FilterText;
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                if (cancellation.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                _appliedFilterText = filterText;
+                ItemsView.Refresh();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_filterRefreshCancellation, cancellation))
+            {
+                _filterRefreshCancellation = null;
+            }
+
+            cancellation.Dispose();
+        }
     }
 
     private void RaiseCommandStates()
@@ -786,6 +834,8 @@ public sealed record BucketPassOptionViewModel(BucketPass Pass, string DisplayNa
 }
 
 public sealed record BucketDefinitionViewModel(string Category, string Value, string Label);
+
+public sealed record TagButtonGroupViewModel(string Name, IReadOnlyList<TagButtonViewModel> Buttons);
 
 public enum BucketSelectionAction
 {

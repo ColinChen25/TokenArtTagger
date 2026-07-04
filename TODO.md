@@ -9,7 +9,8 @@
 - Perceptual hash similar-image search.
 - Richer search/filter UI with tag facets and missing-tag filters.
 - Automated undo from JSON undo logs.
-- Better WebP/GIF preview handling if Windows codecs are missing.
+- Freeform tags for exact one-off weapon and creature details such as specific named weapons, visual motifs, or source-specific notes.
+- Better animated WebP preview handling if Windows codecs expose only a static frame.
 - AI-assisted tag suggestions, never automatic tagging without confirmation.
 
 ## Safety Follow-Ups

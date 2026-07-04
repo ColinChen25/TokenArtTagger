@@ -31,6 +31,7 @@ public static class FilenameGenerator
 
     public static IReadOnlyList<string> Validate(TagSet tags)
     {
+        tags = Normalize(tags);
         var errors = new List<string>();
         if (string.IsNullOrWhiteSpace(tags.Gender))
         {
@@ -65,6 +66,7 @@ public static class FilenameGenerator
     private static string Generate(TagSet tags, string fullHashHex, string extension, int hashLength)
     {
         ValidateHash(fullHashHex);
+        tags = Normalize(tags);
         var errors = Validate(tags);
         if (errors.Count > 0)
         {
@@ -88,5 +90,20 @@ public static class FilenameGenerator
         {
             throw new ArgumentException("Hash must be at least 6 hex characters.", nameof(fullHashHex));
         }
+    }
+
+    private static TagSet Normalize(TagSet tags)
+    {
+        return tags with
+        {
+            Gender = tags.Gender?.Trim().ToLowerInvariant(),
+            Role = tags.Role?.Trim().ToLowerInvariant(),
+            WeaponOrStyle = string.IsNullOrWhiteSpace(tags.WeaponOrStyle)
+                ? null
+                : TagSchema.NormalizeStyle(tags.WeaponOrStyle),
+            Race = string.IsNullOrWhiteSpace(tags.Race)
+                ? null
+                : TagSchema.NormalizeRace(tags.Race)
+        };
     }
 }

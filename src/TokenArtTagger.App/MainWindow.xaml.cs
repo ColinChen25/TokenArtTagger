@@ -110,11 +110,6 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (ReferenceEquals(list, LibraryList))
-            {
-                return;
-            }
-
             _rectangleList = list;
             _rectangleStartPoint = _dragStartPoint;
             _isRectangleSelecting = true;
@@ -122,6 +117,7 @@ public partial class MainWindow : Window
             _rubberBandAdorner = new RubberBandAdorner(list);
             _rubberBandLayer?.Add(_rubberBandAdorner);
             list.CaptureMouse();
+            App.DebugLog.Write("RectangleSelectionStart", ListMode(list), SelectedSummary(list));
             e.Handled = true;
         }
     }
@@ -146,7 +142,7 @@ public partial class MainWindow : Window
             }
             catch (InvalidOperationException ex)
             {
-                CancelRectangleSelection("Rectangle selection was canceled because the grid layout changed.", ex);
+                CancelRectangleSelection("grid layout changed", ex, showWarning: true);
             }
 
             return;
@@ -202,7 +198,7 @@ public partial class MainWindow : Window
         }
         catch (InvalidOperationException ex)
         {
-            CancelRectangleSelection("Rectangle selection was canceled because the grid layout changed.", ex);
+            CancelRectangleSelection("grid layout changed", ex, showWarning: true);
             e.Handled = true;
             return;
         }
@@ -222,6 +218,7 @@ public partial class MainWindow : Window
         try
         {
             SelectByRectangle(list, _rectangleStartPoint, endPoint, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+            App.DebugLog.Write("RectangleSelectionEnd", ListMode(list), SelectedSummary(list));
         }
         catch (InvalidOperationException ex)
         {
@@ -232,14 +229,42 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void CancelRectangleSelection(string message, Exception exception)
+    private void ImageList_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        if (_isRectangleSelecting && ReferenceEquals(sender, _rectangleList))
+        {
+            CancelRectangleSelection("pointer left grid");
+        }
+    }
+
+    private void ImageList_LostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_isRectangleSelecting && ReferenceEquals(sender, _rectangleList))
+        {
+            CancelRectangleSelection("mouse capture lost");
+        }
+    }
+
+    private void CancelRectangleSelection(string reason, Exception? exception = null, bool showWarning = false)
+    {
+        App.DebugLog.Write("RectangleSelectionCancel", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+        {
+            ["reason"] = reason,
+            ["exception"] = exception?.GetType().Name
+        });
         RemoveRubberBand();
         _isRectangleSelecting = false;
         _rectangleList?.ReleaseMouseCapture();
         _rectangleList = null;
-        ViewModel.ShowWarning(message);
-        _ = CrashLogService.WriteCrashLogAsync(exception);
+        if (showWarning)
+        {
+            ViewModel.ShowWarning("Rectangle selection was canceled because the grid layout changed.");
+        }
+
+        if (exception is not null)
+        {
+            _ = CrashLogService.WriteCrashLogAsync(exception);
+        }
     }
 
     private void UpdateRubberBand(System.Windows.Point endPoint)
@@ -249,7 +274,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        _rubberBandAdorner.SelectionBounds = new Rect(_rectangleStartPoint, endPoint);
+        var rectangle = RectangleFromDrag(_rectangleStartPoint, endPoint, _rectangleList);
+        if (!rectangle.IsValid)
+        {
+            _rubberBandAdorner.SelectionBounds = Rect.Empty;
+            _rubberBandAdorner.InvalidateVisual();
+            return;
+        }
+
+        _rubberBandAdorner.SelectionBounds = new Rect(
+            new System.Windows.Point(rectangle.Left, rectangle.Top),
+            new System.Windows.Point(rectangle.Right, rectangle.Bottom));
         _rubberBandAdorner.InvalidateVisual();
     }
 
@@ -339,6 +374,11 @@ public partial class MainWindow : Window
             ["state"] = WindowState.ToString(),
             ["width"] = ActualWidth.ToString("F0")
         });
+        if (_isRectangleSelecting)
+        {
+            CancelRectangleSelection("window resized");
+        }
+
         _isResizing = true;
         _resizeQuietCancellation?.Cancel();
         var cancellation = new CancellationTokenSource();
@@ -453,6 +493,11 @@ public partial class MainWindow : Window
             ["added"] = string.Join(",", e.AddedItems.OfType<TabItem>().Select(item => item.Header?.ToString())),
             ["removed"] = string.Join(",", e.RemovedItems.OfType<TabItem>().Select(item => item.Header?.ToString()))
         });
+        if (_isRectangleSelecting)
+        {
+            CancelRectangleSelection("tab switched");
+        }
+
         var bucketModeActive = e.AddedItems.OfType<TabItem>().Any(item => string.Equals(item.Header?.ToString(), "Bucket Tagging", StringComparison.Ordinal));
         ViewModel.SetBucketModeActive(bucketModeActive);
         App.DebugLog.Write(bucketModeActive ? "BucketModeActivated" : "LibraryModeActivated", CurrentMode(), SelectedSummary());
@@ -524,7 +569,12 @@ public partial class MainWindow : Window
 
     private void SelectByRectangle(System.Windows.Controls.ListBox list, System.Windows.Point start, System.Windows.Point end, bool toggle)
     {
-        var selection = new SelectionRectangle(start.X, start.Y, end.X - start.X, end.Y - start.Y);
+        var selection = RectangleFromDrag(start, end, list);
+        if (!selection.IsValid)
+        {
+            return;
+        }
+
         var tiles = new List<SelectionTile<ImageItemViewModel>>();
         foreach (var item in list.Items.Cast<ImageItemViewModel>())
         {
@@ -565,6 +615,21 @@ public partial class MainWindow : Window
                 list.SelectedItems.Add(item);
             }
         }
+    }
+
+    private static SelectionRectangle RectangleFromDrag(
+        System.Windows.Point start,
+        System.Windows.Point end,
+        FrameworkElement? boundsElement)
+    {
+        var selection = new SelectionRectangle(start.X, start.Y, end.X - start.X, end.Y - start.Y);
+        if (boundsElement is null)
+        {
+            return selection;
+        }
+
+        var bounds = new SelectionRectangle(0, 0, boundsElement.ActualWidth, boundsElement.ActualHeight);
+        return selection.ClampTo(bounds);
     }
 
     private void OpenImageInspector(ImageItemViewModel item)

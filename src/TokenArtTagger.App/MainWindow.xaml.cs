@@ -15,7 +15,9 @@ namespace TokenArtTagger.App;
 
 public partial class MainWindow : Window
 {
+    private const string DragImageItemsFormat = "TokenArtTagger.ImageItems";
     private System.Windows.Point _dragStartPoint;
+    private IReadOnlyList<ImageItemViewModel> _dragSelectionSnapshot = [];
     private System.Windows.Point _rectangleStartPoint;
     private System.Windows.Controls.ListBox? _rectangleList;
     private bool _isRectangleSelecting;
@@ -84,9 +86,27 @@ public partial class MainWindow : Window
         {
             list.Focus();
             _dragStartPoint = e.GetPosition(list);
-            if (IsFromScrollBar(e.OriginalSource as DependencyObject) ||
-                FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not null)
+            _dragSelectionSnapshot = [];
+            if (IsFromScrollBar(e.OriginalSource as DependencyObject))
             {
+                return;
+            }
+
+            if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is { } tile)
+            {
+                if (tile.DataContext is ImageItemViewModel origin)
+                {
+                    _dragSelectionSnapshot = DragSelection.PayloadForDragStart(
+                        list.SelectedItems.Cast<ImageItemViewModel>(),
+                        origin,
+                        tile.IsSelected);
+
+                    if (tile.IsSelected && Keyboard.Modifiers == ModifierKeys.None)
+                    {
+                        e.Handled = true;
+                    }
+                }
+
                 return;
             }
 
@@ -134,9 +154,16 @@ public partial class MainWindow : Window
 
         if (sender is not System.Windows.Controls.ListBox list ||
             e.LeftButton != MouseButtonState.Pressed ||
-            list.SelectedItems.Count == 0 ||
             IsFromScrollBar(e.OriginalSource as DependencyObject) ||
             FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is null)
+        {
+            return;
+        }
+
+        var payload = _dragSelectionSnapshot.Count > 0
+            ? _dragSelectionSnapshot
+            : list.SelectedItems.Cast<ImageItemViewModel>().ToList();
+        if (payload.Count == 0)
         {
             return;
         }
@@ -148,7 +175,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        DragDrop.DoDragDrop(list, "selected-images", System.Windows.DragDropEffects.Copy);
+        var data = new System.Windows.DataObject();
+        data.SetData(DragImageItemsFormat, payload);
+        data.SetData(System.Windows.DataFormats.StringFormat, "selected-images");
+        DragDrop.DoDragDrop(list, data, System.Windows.DragDropEffects.Copy);
+        _dragSelectionSnapshot = [];
     }
 
     private void ImageList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -159,6 +190,7 @@ public partial class MainWindow : Window
         });
         if (!_isRectangleSelecting || _rectangleList is null)
         {
+            _dragSelectionSnapshot = [];
             return;
         }
 
@@ -344,6 +376,7 @@ public partial class MainWindow : Window
     private void TagButton_PreviewDragOver(object sender, System.Windows.DragEventArgs e)
     {
         e.Effects = e.Data.GetDataPresent(System.Windows.DataFormats.StringFormat)
+            || e.Data.GetDataPresent(DragImageItemsFormat)
             ? System.Windows.DragDropEffects.Copy
             : System.Windows.DragDropEffects.None;
         e.Handled = true;
@@ -351,15 +384,17 @@ public partial class MainWindow : Window
 
     private void TagButton_Drop(object sender, System.Windows.DragEventArgs e)
     {
+        var draggedItems = DraggedItemsFromData(e.Data);
         if (sender is FrameworkElement { DataContext: TagButtonViewModel tag })
         {
-            ViewModel.ApplyTag(tag);
+            ViewModel.ApplyTag(tag, draggedItems);
         }
         else if (sender is FrameworkElement { DataContext: BucketDefinitionViewModel bucket })
         {
-            ViewModel.ApplyBucketCommand.Execute(bucket);
+            ViewModel.ApplyBucket(bucket, draggedItems);
         }
 
+        _dragSelectionSnapshot = [];
         e.Handled = true;
     }
 
@@ -423,7 +458,9 @@ public partial class MainWindow : Window
 
     private void ShowSelectedInExplorer_Click(object sender, RoutedEventArgs e)
     {
-        var selected = ViewModel.SelectedItem;
+        var selected = (sender as FrameworkElement)?.DataContext as ImageItemViewModel
+            ?? ViewModel.SelectedItem
+            ?? ViewModel.BucketSelectedItem;
         if (selected is null)
         {
             ViewModel.ShowWarning("Select an image before opening File Explorer.");
@@ -691,6 +728,13 @@ public partial class MainWindow : Window
         }
 
         return frames;
+    }
+
+    private static IReadOnlyList<ImageItemViewModel>? DraggedItemsFromData(System.Windows.IDataObject data)
+    {
+        return data.GetDataPresent(DragImageItemsFormat)
+            ? data.GetData(DragImageItemsFormat) as IReadOnlyList<ImageItemViewModel>
+            : null;
     }
 
     private static bool IsFromScrollBar(DependencyObject? source)

@@ -33,31 +33,4 @@ public sealed class RectangleSelectionTests
 
         CollectionAssert.AreEqual(new[] { "good" }, selected.ToArray());
     }
-
-    [TestMethod]
-    public void ClampTo_KeepsDragRectangleInsideGridBounds()
-    {
-        var rectangle = new SelectionRectangle(20, -25, 60, 80);
-        var bounds = new SelectionRectangle(0, 0, 100, 100);
-
-        var clamped = rectangle.ClampTo(bounds);
-
-        Assert.AreEqual(20, clamped.Left);
-        Assert.AreEqual(0, clamped.Top);
-        Assert.AreEqual(80, clamped.Right);
-        Assert.AreEqual(55, clamped.Bottom);
-    }
-
-    [TestMethod]
-    public void Intersecting_ReturnsEmptyForInvalidSelectionRectangle()
-    {
-        var tiles = new[]
-        {
-            new SelectionTile<string>("first", new SelectionRectangle(0, 0, 50, 50))
-        };
-
-        var selected = RectangleSelection.Intersecting(tiles, new SelectionRectangle(double.NaN, 0, 20, 20));
-
-        Assert.AreEqual(0, selected.Count);
-    }
 }

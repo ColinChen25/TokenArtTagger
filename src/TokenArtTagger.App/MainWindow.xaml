@@ -157,6 +157,18 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
+                            <TextBlock Text="Ready" Foreground="#245C37" FontWeight="SemiBold" Margin="0,0,6,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsCompleteForCurrentBucketPass}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                             <TextBlock Text="Needs tags" Foreground="#8A4D00" FontWeight="SemiBold" Margin="0,0,6,0">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
@@ -353,6 +365,7 @@
                             <Button Style="{StaticResource ToolButton}" Content="Previous" Command="{Binding PreviousBucketPageCommand}" />
                             <TextBlock Text="{Binding BucketPageText}" VerticalAlignment="Center" Margin="10,0" />
                             <Button Style="{StaticResource ToolButton}" Content="Next" Command="{Binding NextBucketPageCommand}" />
+                            <Button Style="{StaticResource ToolButton}" Content="Refresh Working Set" Command="{Binding RefreshBucketWorkingSetCommand}" />
                             <TextBlock Text="Default" VerticalAlignment="Center" FontWeight="SemiBold" Margin="16,0,6,0" />
                             <ComboBox Width="130" VerticalContentAlignment="Center" ItemsSource="{Binding BucketBuckets}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding SelectedDefaultBucketValue}" />
                             <Button Style="{StaticResource ToolButton}" Content="Apply default to current page" Command="{Binding ApplyDefaultToPageCommand}" />
@@ -437,6 +450,7 @@
                                             <Button Style="{StaticResource ToolButton}" Margin="0,0,6,6" Content="Clear All Temporary Tags" Command="{Binding ClearAllTemporaryTagsCommand}" />
                                         </WrapPanel>
                                         <Separator Margin="0,0,0,12" />
+                                        <TextBox Text="{Binding BucketWorkingSetSummary, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
                                         <TextBlock Text="{Binding SelectedBucketPass.DisplayName, StringFormat=Current pass: {0}}" FontWeight="SemiBold" Margin="0,0,0,8" />
                                         <TextBlock Text="Ctrl+click, Shift+click, arrow keys, Ctrl+A, and Escape work in the current page." TextWrapping="Wrap" Foreground="#555555" />
                                         <TextBlock Text="Partial bucket tags are saved as work-in-progress app data outside the image folder and outside the repository." TextWrapping="Wrap" Foreground="#555555" Margin="0,8,0,0" />

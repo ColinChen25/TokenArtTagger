@@ -453,7 +453,9 @@ public partial class MainWindow : Window
             ["added"] = string.Join(",", e.AddedItems.OfType<TabItem>().Select(item => item.Header?.ToString())),
             ["removed"] = string.Join(",", e.RemovedItems.OfType<TabItem>().Select(item => item.Header?.ToString()))
         });
-        App.DebugLog.Write(BucketList.IsVisible ? "BucketModeActivated" : "LibraryModeActivated", CurrentMode(), SelectedSummary());
+        var bucketModeActive = e.AddedItems.OfType<TabItem>().Any(item => string.Equals(item.Header?.ToString(), "Bucket Tagging", StringComparison.Ordinal));
+        ViewModel.SetBucketModeActive(bucketModeActive);
+        App.DebugLog.Write(bucketModeActive ? "BucketModeActivated" : "LibraryModeActivated", CurrentMode(), SelectedSummary());
     }
 
     private void ShowSelectedInExplorer_Click(object sender, RoutedEventArgs e)

@@ -9,6 +9,7 @@ public sealed class ImageItemViewModel : ViewModelBase
     private ImageSource? _thumbnail;
     private string? _proposedFileName;
     private string? _previewError;
+    private bool _isCompleteForCurrentBucketPass;
 
     public ImageItemViewModel(ImageItem item)
     {
@@ -36,6 +37,12 @@ public sealed class ImageItemViewModel : ViewModelBase
     public bool HasInvalidTags => TagIssue.Kind == TagIssueKind.Invalid;
 
     public bool HasRenameBlockingIssue => HasInvalidTags || !string.IsNullOrWhiteSpace(PreviewError);
+
+    public bool IsCompleteForCurrentBucketPass
+    {
+        get => _isCompleteForCurrentBucketPass;
+        set => SetProperty(ref _isCompleteForCurrentBucketPass, value);
+    }
 
     public string TagIssueMessage => string.IsNullOrWhiteSpace(PreviewError)
         ? TagIssue.Message

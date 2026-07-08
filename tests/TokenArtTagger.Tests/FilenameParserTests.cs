@@ -88,6 +88,7 @@ public sealed class FilenameParserTests
     [DataRow("male-melee-baton-human.jpg", "melee", "blunt", "human")]
     [DataRow("male-melee-tonfa-human.jpg", "melee", "blunt", "human")]
     [DataRow("male-range-starknife-human.jpg", "range", "thrown", "human")]
+    [DataRow("female-melee-starknife-human.jpg", "melee", "thrown", "human")]
     [DataRow("male-melee-kama-human.jpg", "melee", "dagger", "human")]
     [DataRow("male-melee-drill-construct.jpg", "melee", "exotic", "construct")]
     [DataRow("male-melee-chainsaw-mecha.jpg", "melee", "exotic", "construct")]

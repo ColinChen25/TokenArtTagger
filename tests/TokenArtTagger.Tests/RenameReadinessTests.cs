@@ -35,7 +35,36 @@ public sealed class RenameReadinessTests
         var result = RenameReadiness.Evaluate([item]);
 
         Assert.IsFalse(result.CanPreview);
-        StringAssert.Contains(result.Message, "range requires bow, gun, crossbow, or thrown");
+        StringAssert.Contains(result.Message, "range requires polearm, dagger, axe, thrown, exotic, bow, gun, or crossbow");
+    }
+
+    [TestMethod]
+    [DataRow("melee", "thrown")]
+    [DataRow("range", "thrown")]
+    [DataRow("range", "dagger")]
+    [DataRow("range", "axe")]
+    [DataRow("melee", "exotic")]
+    [DataRow("range", "exotic")]
+    public void Evaluate_AllowsVersatileWeaponStylesForMeleeAndRange(string role, string style)
+    {
+        var item = CreateItem(new TagSet("female", role, style, "human"));
+
+        var result = RenameReadiness.Evaluate([item]);
+
+        Assert.IsTrue(result.CanPreview, result.Message);
+    }
+
+    [TestMethod]
+    [DataRow("caster", "bow")]
+    [DataRow("melee", "wizard")]
+    [DataRow("range", "cleric")]
+    public void Evaluate_BlocksCrossCategoryRoleStyleMismatches(string role, string style)
+    {
+        var item = CreateItem(new TagSet("female", role, style, "human"));
+
+        var result = RenameReadiness.Evaluate([item]);
+
+        Assert.IsFalse(result.CanPreview);
     }
 
     [TestMethod]

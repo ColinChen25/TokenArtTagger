@@ -10,7 +10,7 @@ public static class BucketWorkingSet
         return items.Where(item => Matches(item, pass, mode)).ToList();
     }
 
-    private static bool Matches(ImageItem item, BucketPass pass, BucketFilterMode mode)
+    public static bool Matches(ImageItem item, BucketPass pass, BucketFilterMode mode)
     {
         if (mode == BucketFilterMode.ChangedOnly)
         {
@@ -31,6 +31,21 @@ public static class BucketWorkingSet
             BucketPass.RangeStyle => MatchStyle(tags, "range", mode),
             BucketPass.CasterStyle => MatchStyle(tags, "caster", mode),
             BucketPass.Race => MatchValue(tags.Race, TagSchema.IsKnownRace, mode),
+            _ => false
+        };
+    }
+
+    public static bool IsCompleteForPass(ImageItem item, BucketPass pass)
+    {
+        var tags = item.CurrentTags;
+        return pass switch
+        {
+            BucketPass.Gender => !string.IsNullOrWhiteSpace(tags.Gender) && TagSchema.IsKnownGender(tags.Gender),
+            BucketPass.Role => !string.IsNullOrWhiteSpace(tags.Role) && TagSchema.IsKnownRole(tags.Role),
+            BucketPass.MeleeStyle => IsCompleteStyle(tags, "melee"),
+            BucketPass.RangeStyle => IsCompleteStyle(tags, "range"),
+            BucketPass.CasterStyle => IsCompleteStyle(tags, "caster"),
+            BucketPass.Race => !string.IsNullOrWhiteSpace(tags.Race) && TagSchema.IsKnownRace(tags.Race),
             _ => false
         };
     }
@@ -62,5 +77,12 @@ public static class BucketWorkingSet
             BucketFilterMode.AllForPass => true,
             _ => false
         };
+    }
+
+    private static bool IsCompleteStyle(TagSet tags, string role)
+    {
+        return string.Equals(tags.Role, role, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(tags.WeaponOrStyle) &&
+            TagSchema.IsKnownStyleForRole(role, tags.WeaponOrStyle);
     }
 }

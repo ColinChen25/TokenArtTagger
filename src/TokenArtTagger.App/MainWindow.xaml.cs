@@ -30,23 +30,56 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ViewModel.DebugLog = App.DebugLog;
         ViewModel.RequestBucketSelectionAction += HandleBucketSelectionAction;
+        App.DebugLog.Write("MainWindowConstructed", CurrentMode(), SelectedSummary());
     }
 
     private MainViewModel ViewModel => (MainViewModel)DataContext;
 
     private void LibraryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        using var logScope = App.DebugLog.Enter("SelectionChanged", "Library", SelectedSummary(LibraryList), new Dictionary<string, string?>
+        {
+            ["added"] = e.AddedItems.Count.ToString(),
+            ["removed"] = e.RemovedItems.Count.ToString()
+        });
         ViewModel.ReplaceSelection(LibraryList.SelectedItems.Cast<ImageItemViewModel>());
     }
 
     private void BucketList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        using var logScope = App.DebugLog.Enter("SelectionChanged", "Bucket", SelectedSummary(BucketList), new Dictionary<string, string?>
+        {
+            ["added"] = e.AddedItems.Count.ToString(),
+            ["removed"] = e.RemovedItems.Count.ToString()
+        });
         ViewModel.ReplaceBucketSelection(BucketList.SelectedItems.Cast<ImageItemViewModel>());
+    }
+
+    private void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        App.DebugLog.Write("MainWindowLoaded", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+        {
+            ["logFile"] = App.DebugLog.LogFilePath
+        });
+        App.DebugLog.Write(BucketList.IsVisible ? "BucketModeActivated" : "LibraryModeActivated", CurrentMode(), SelectedSummary());
+        ViewModel.ShowInfo($"Debug log: {App.DebugLog.LogFilePath}");
+    }
+
+    private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        App.DebugLog.Write("MainWindowClosing", CurrentMode(), SelectedSummary());
     }
 
     private void ImageList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        using var logScope = App.DebugLog.Enter("PreviewMouseLeftButtonDown", ListMode(sender), SelectedSummary(sender as System.Windows.Controls.ListBox), new Dictionary<string, string?>
+        {
+            ["source"] = e.OriginalSource?.GetType().Name,
+            ["isScrollBar"] = IsFromScrollBar(e.OriginalSource as DependencyObject).ToString(),
+            ["isTile"] = (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not null).ToString()
+        });
         if (sender is System.Windows.Controls.ListBox list)
         {
             list.Focus();
@@ -75,6 +108,16 @@ public partial class MainWindow : Window
 
     private void ImageList_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        if (!_isRectangleSelecting && e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        using var logScope = App.DebugLog.Enter("ImageListMouseMove", ListMode(sender), SelectedSummary(sender as System.Windows.Controls.ListBox), new Dictionary<string, string?>
+        {
+            ["leftButton"] = e.LeftButton.ToString(),
+            ["isRectangleSelecting"] = _isRectangleSelecting.ToString()
+        });
         if (_isRectangleSelecting && _rectangleList is not null)
         {
             try
@@ -110,6 +153,10 @@ public partial class MainWindow : Window
 
     private void ImageList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        using var logScope = App.DebugLog.Enter("PreviewMouseLeftButtonUp", ListMode(sender), SelectedSummary(sender as System.Windows.Controls.ListBox), new Dictionary<string, string?>
+        {
+            ["isRectangleSelecting"] = _isRectangleSelecting.ToString()
+        });
         if (!_isRectangleSelecting || _rectangleList is null)
         {
             return;
@@ -211,6 +258,11 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        using var logScope = App.DebugLog.Enter("WindowPreviewKeyDown", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+        {
+            ["key"] = e.Key.ToString(),
+            ["modifiers"] = Keyboard.Modifiers.ToString()
+        });
         if (e.Key != Key.A ||
             !Keyboard.Modifiers.HasFlag(ModifierKeys.Control) ||
             Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox)
@@ -226,6 +278,11 @@ public partial class MainWindow : Window
 
     private async void ThumbnailImage_Loaded(object sender, RoutedEventArgs e)
     {
+        var loadedItem = (sender as FrameworkElement)?.DataContext as ImageItemViewModel;
+        using var logScope = App.DebugLog.Enter("ThumbnailImageLoaded", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+        {
+            ["file"] = loadedItem?.FileName
+        });
         if (sender is System.Windows.Controls.Image { DataContext: ImageItemViewModel item } image)
         {
             while (_isResizing && image.IsLoaded)
@@ -244,6 +301,12 @@ public partial class MainWindow : Window
 
     private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
     {
+        using var logScope = App.DebugLog.Enter("WindowSizeChanged", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+        {
+            ["height"] = ActualHeight.ToString("F0"),
+            ["state"] = WindowState.ToString(),
+            ["width"] = ActualWidth.ToString("F0")
+        });
         _isResizing = true;
         _resizeQuietCancellation?.Cancel();
         var cancellation = new CancellationTokenSource();
@@ -302,6 +365,10 @@ public partial class MainWindow : Window
 
     private void ImageTile_RightClick(object sender, MouseButtonEventArgs e)
     {
+        using var logScope = App.DebugLog.Enter("ImageTileRightClick", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+        {
+            ["source"] = e.OriginalSource?.GetType().Name
+        });
         var item = FindDataContext<ImageItemViewModel>(e.OriginalSource as DependencyObject);
         if (item is null)
         {
@@ -310,6 +377,48 @@ public partial class MainWindow : Window
 
         OpenImageInspector(item);
         e.Handled = true;
+    }
+
+    private void ScanFolder_Click(object sender, RoutedEventArgs e)
+    {
+        App.DebugLog.Write("ScanButtonClicked", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+        {
+            ["folderName"] = DebugEventLogger.SafeNameFromPath(ViewModel.FolderPath)
+        });
+    }
+
+    private void OpenLogsFolder_Click(object sender, RoutedEventArgs e)
+    {
+        using var logScope = App.DebugLog.Enter("OpenLogsFolder", CurrentMode(), SelectedSummary());
+        try
+        {
+            Directory.CreateDirectory(DebugEventLogger.DefaultLogFolder());
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{DebugEventLogger.DefaultLogFolder()}\"",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            ViewModel.ShowWarning($"Could not open logs folder: {ex.Message}");
+        }
+    }
+
+    private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!e.AddedItems.OfType<TabItem>().Any() && !e.RemovedItems.OfType<TabItem>().Any())
+        {
+            return;
+        }
+
+        using var logScope = App.DebugLog.Enter("TabSelectionChanged", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+        {
+            ["added"] = string.Join(",", e.AddedItems.OfType<TabItem>().Select(item => item.Header?.ToString())),
+            ["removed"] = string.Join(",", e.RemovedItems.OfType<TabItem>().Select(item => item.Header?.ToString()))
+        });
+        App.DebugLog.Write(BucketList.IsVisible ? "BucketModeActivated" : "LibraryModeActivated", CurrentMode(), SelectedSummary());
     }
 
     private void ShowSelectedInExplorer_Click(object sender, RoutedEventArgs e)
@@ -421,9 +530,22 @@ public partial class MainWindow : Window
 
     private void OpenImageInspector(ImageItemViewModel item)
     {
+        using var logScope = App.DebugLog.Enter("OpenImageInspector", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+        {
+            ["file"] = item.FileName
+        });
         try
         {
+            App.DebugLog.Write("DetailImageLoad.enter", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+            {
+                ["file"] = item.FileName
+            });
             var frames = LoadInspectorFrames(item.FullPath);
+            App.DebugLog.Write("DetailImageLoad.exit", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+            {
+                ["file"] = item.FileName,
+                ["frames"] = frames.Count.ToString()
+            });
             if (frames.Count == 0)
             {
                 ViewModel.ShowWarning("Could not open image preview: no decodable image frames were found.");
@@ -519,8 +641,42 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
+            App.DebugLog.Write("OpenImageInspector.error", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+            {
+                ["file"] = item.FileName,
+                ["message"] = ex.Message,
+                ["type"] = ex.GetType().Name
+            });
             ViewModel.ShowWarning($"Could not open image preview: {ex.Message}");
         }
+    }
+
+    private string CurrentMode()
+    {
+        return BucketList.IsVisible ? "Bucket" : "Library";
+    }
+
+    private static string ListMode(object? sender)
+    {
+        return sender is System.Windows.Controls.ListBox { Name: "BucketList" } ? "Bucket" : "Library";
+    }
+
+    private string SelectedSummary()
+    {
+        return CurrentMode() == "Bucket" ? SelectedSummary(BucketList) : SelectedSummary(LibraryList);
+    }
+
+    private static string SelectedSummary(System.Windows.Controls.ListBox? list)
+    {
+        if (list is null)
+        {
+            return "-";
+        }
+
+        var last = list.SelectedItems.OfType<ImageItemViewModel>().LastOrDefault();
+        return last is null
+            ? $"count={list.SelectedItems.Count};file=-"
+            : $"count={list.SelectedItems.Count};file={last.FileName}";
     }
 
     private static IReadOnlyList<ImageSource> LoadInspectorFrames(string path)

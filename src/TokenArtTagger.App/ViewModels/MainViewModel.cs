@@ -72,6 +72,8 @@ public sealed class MainViewModel : ViewModelBase
 
     public event Action<BucketSelectionAction>? RequestBucketSelectionAction;
 
+    public DebugEventLogger? DebugLog { get; set; }
+
     public string AppTitle => AppInfo.WindowTitle;
 
     public ObservableCollection<ImageItemViewModel> Items { get; } = [];
@@ -262,6 +264,10 @@ public sealed class MainViewModel : ViewModelBase
 
     public async Task ScanAsync()
     {
+        using var logScope = DebugLog?.Enter("ScanAsync", selected: SelectionSummary(), details: new Dictionary<string, string?>
+        {
+            ["folderName"] = DebugEventLogger.SafeNameFromPath(FolderPath)
+        });
         IsScanReminderActive = false;
         SetStatus("Scanning...");
         _lastPreview = null;
@@ -288,6 +294,12 @@ public sealed class MainViewModel : ViewModelBase
         var parseWarning = parseFailures > 0
             ? $" {parseFailures} filename(s) need tags or parser review."
             : string.Empty;
+        DebugLog?.Write("ScanCompleted", details: new Dictionary<string, string?>
+        {
+            ["count"] = Items.Count.ToString(),
+            ["errors"] = result.Errors.Count.ToString(),
+            ["parseFailures"] = parseFailures.ToString()
+        });
         SetStatus(result.Errors.Count == 0
             ? $"Scanned {Items.Count} images.{parseWarning}{legacyUndoWarning}"
             : $"Scanned {Items.Count} images with {result.Errors.Count} errors.{parseWarning}{legacyUndoWarning}",
@@ -298,24 +310,37 @@ public sealed class MainViewModel : ViewModelBase
 
     public void ReplaceSelection(IEnumerable<ImageItemViewModel> selectedItems)
     {
+        var list = selectedItems.ToList();
+        using var logScope = DebugLog?.Enter("SelectionChanged", "Library", SelectionSummary(), new Dictionary<string, string?>
+        {
+            ["incomingCount"] = list.Count.ToString()
+        });
         SelectedItems.Clear();
-        foreach (var item in selectedItems)
+        foreach (var item in list)
         {
             SelectedItems.Add(item);
         }
 
         _lastPreview = null;
         _lastPreviewScope = null;
-        OnPropertyChanged(nameof(SelectedItem));
-        OnPropertyChanged(nameof(SelectionCountText));
+        using (DebugLog?.Enter("SelectedItemDetailsUpdate", "Library", SelectionSummary()))
+        {
+            OnPropertyChanged(nameof(SelectedItem));
+            OnPropertyChanged(nameof(SelectionCountText));
+        }
         UpdateRenameReadiness();
         RaiseCommandStates();
     }
 
     public void ReplaceBucketSelection(IEnumerable<ImageItemViewModel> selectedItems)
     {
+        var list = selectedItems.ToList();
+        using var logScope = DebugLog?.Enter("SelectionChanged", "Bucket", BucketSelectionSummary(), new Dictionary<string, string?>
+        {
+            ["incomingCount"] = list.Count.ToString()
+        });
         BucketSelectedItems.Clear();
-        foreach (var item in selectedItems)
+        foreach (var item in list)
         {
             BucketSelectedItems.Add(item);
         }
@@ -339,6 +364,10 @@ public sealed class MainViewModel : ViewModelBase
 
     public async Task LoadThumbnailAsync(ImageItemViewModel item)
     {
+        using var logScope = DebugLog?.Enter("ThumbnailLoad", selected: SelectionSummary(), details: new Dictionary<string, string?>
+        {
+            ["file"] = item.FileName
+        });
         if (item.Thumbnail is not null)
         {
             return;
@@ -350,6 +379,10 @@ public sealed class MainViewModel : ViewModelBase
 
     private async Task PreviewRenameAsync(RenamePreviewScope scope)
     {
+        using var logScope = DebugLog?.Enter("PreviewRename", selected: SelectionSummary(), details: new Dictionary<string, string?>
+        {
+            ["scope"] = scope.ToString()
+        });
         var targets = scope == RenamePreviewScope.Selected
             ? RenameTargetSelector.Selected(CurrentSelectedItems(), CurrentAllItems())
             : RenameTargetSelector.Dirty(CurrentAllItems());
@@ -596,6 +629,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private void UpdateAfterTagsChanged()
     {
+        using var logScope = DebugLog?.Enter("TagsChanged", selected: SelectionSummary());
         _lastPreview = null;
         _lastPreviewScope = null;
         _ = SaveWorkInProgressAsync();
@@ -618,6 +652,12 @@ public sealed class MainViewModel : ViewModelBase
 
     private void RefreshBucketPage()
     {
+        using var logScope = DebugLog?.Enter("RefreshBucketPage", "Bucket", BucketSelectionSummary(), new Dictionary<string, string?>
+        {
+            ["pass"] = SelectedBucketPass.DisplayName,
+            ["filter"] = SelectedBucketFilter.ToString(),
+            ["pageSize"] = BucketPageSize.ToString()
+        });
         var workingSet = BucketWorkingSet.Filter(
             CurrentAllItems(),
             SelectedBucketPass.Pass,
@@ -659,6 +699,11 @@ public sealed class MainViewModel : ViewModelBase
     public void ShowWarning(string message)
     {
         SetStatus(message, isWarning: true);
+    }
+
+    public void ShowInfo(string message)
+    {
+        SetStatus(message);
     }
 
     private async Task<Dictionary<string, WorkInProgressTagRecord>> LoadWorkInProgressMapAsync()
@@ -709,6 +754,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private void BrowseFolder()
     {
+        using var logScope = DebugLog?.Enter("BrowseFolder");
         using var dialog = new WinForms.FolderBrowserDialog
         {
             Description = "Choose the root image folder to scan",
@@ -719,6 +765,11 @@ public sealed class MainViewModel : ViewModelBase
         if (dialog.ShowDialog() == WinForms.DialogResult.OK)
         {
             FolderPath = dialog.SelectedPath;
+            DebugLog?.Write("FolderSelected", details: new Dictionary<string, string?>
+            {
+                ["folderName"] = DebugEventLogger.SafeNameFromPath(FolderPath),
+                ["exists"] = Directory.Exists(FolderPath).ToString()
+            });
             IsScanReminderActive = true;
             SetStatus("Folder selected. Click Scan Folder to load images.");
             RaiseCommandStates();
@@ -756,6 +807,10 @@ public sealed class MainViewModel : ViewModelBase
             var filterText = FilterText;
             await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
             {
+                using var logScope = DebugLog?.Enter("SearchFilterApply", selected: SelectionSummary(), details: new Dictionary<string, string?>
+                {
+                    ["filterLength"] = filterText.Length.ToString()
+                });
                 if (cancellation.IsCancellationRequested)
                 {
                     return;
@@ -781,6 +836,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private void RaiseCommandStates()
     {
+        using var logScope = DebugLog?.Enter("RaiseCommandStates", selected: SelectionSummary());
         ScanCommand.RaiseCanExecuteChanged();
         PreviewRenameCommand.RaiseCanExecuteChanged();
         PreviewChangedCommand.RaiseCanExecuteChanged();
@@ -808,12 +864,18 @@ public sealed class MainViewModel : ViewModelBase
 
     private void UpdateRenameReadiness()
     {
+        using var logScope = DebugLog?.Enter("ValidationUpdate", selected: SelectionSummary());
         var readiness = RenameReadiness.Evaluate(CurrentSelectedItems());
         RenameBlockReason = readiness.CanPreview ? "Ready to preview selected images." : readiness.Message;
     }
 
     private void SetStatus(string message, bool isWarning = false)
     {
+        using var logScope = DebugLog?.Enter("StatusUpdate", selected: SelectionSummary(), details: new Dictionary<string, string?>
+        {
+            ["isWarning"] = isWarning.ToString(),
+            ["message"] = message
+        });
         StatusMessage = message;
         if (!isWarning)
         {
@@ -836,6 +898,22 @@ public sealed class MainViewModel : ViewModelBase
                 IsStatusWarning = false;
             }
         });
+    }
+
+    private string SelectionSummary()
+    {
+        var selected = SelectedItem;
+        return selected is null
+            ? $"library={SelectedItems.Count};file=-"
+            : $"library={SelectedItems.Count};file={selected.FileName}";
+    }
+
+    private string BucketSelectionSummary()
+    {
+        var selected = BucketSelectedItems.LastOrDefault();
+        return selected is null
+            ? $"bucket={BucketSelectedItems.Count};file=-"
+            : $"bucket={BucketSelectedItems.Count};file={selected.FileName}";
     }
 }
 

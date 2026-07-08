@@ -60,6 +60,7 @@ public sealed class MainViewModel : ViewModelBase
         ApplyBucketCommand = new RelayCommand(parameter => ApplyBucket((BucketDefinitionViewModel)parameter!), parameter => parameter is BucketDefinitionViewModel);
         ApplyDefaultToPageCommand = new RelayCommand(_ => ApplyDefaultToCurrentPage(), _ => BucketPageItems.Count > 0 && SelectedDefaultBucketValue is not null);
         ClearSelectedTemporaryTagsCommand = new RelayCommand(_ => ClearSelectedTemporaryTags(), _ => SelectedItems.Count > 0);
+        ClearBucketSelectedTemporaryTagsCommand = new RelayCommand(_ => ClearBucketSelectedTemporaryTags(), _ => BucketSelectedItems.Count > 0);
         ClearCurrentBucketPassTagsCommand = new RelayCommand(_ => ClearCurrentBucketPassTags(), _ => Items.Count > 0);
         ClearAllTemporaryTagsCommand = new RelayCommand(_ => ClearAllTemporaryTags(), _ => Items.Any(item => item.IsDirty));
         NextBucketPageCommand = new RelayCommand(_ => MoveBucketPage(1), _ => BucketPageIndex + 1 < BucketPageCount);
@@ -102,6 +103,12 @@ public sealed class MainViewModel : ViewModelBase
 
     public ImageItemViewModel? SelectedItem => SelectedItems.LastOrDefault();
 
+    public ImageItemViewModel? SingleSelectionDetailItem => SelectedItems.Count == 1 ? SelectedItem : null;
+
+    public ImageItemViewModel? BucketSelectedItem => BucketSelectedItems.LastOrDefault();
+
+    public ImageItemViewModel? BucketSingleSelectionDetailItem => BucketSelectedItems.Count == 1 ? BucketSelectedItem : null;
+
     public string SelectionCountText => SelectedItems.Count == 1
         ? "Selected: 1 image"
         : $"Selected: {SelectedItems.Count} images";
@@ -109,6 +116,10 @@ public sealed class MainViewModel : ViewModelBase
     public string BucketSelectionCountText => BucketSelectedItems.Count == 1
         ? "Selected: 1 image"
         : $"Selected: {BucketSelectedItems.Count} images";
+
+    public string SelectionAggregateText => BuildSelectionAggregate(SelectedItems);
+
+    public string BucketSelectionAggregateText => BuildSelectionAggregate(BucketSelectedItems);
 
     public string BucketPageText => BucketPageCount == 0
         ? "Page 0 of 0"
@@ -250,6 +261,8 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand ClearSelectedTemporaryTagsCommand { get; }
 
+    public RelayCommand ClearBucketSelectedTemporaryTagsCommand { get; }
+
     public RelayCommand ClearCurrentBucketPassTagsCommand { get; }
 
     public RelayCommand ClearAllTemporaryTagsCommand { get; }
@@ -323,11 +336,7 @@ public sealed class MainViewModel : ViewModelBase
 
         _lastPreview = null;
         _lastPreviewScope = null;
-        using (DebugLog?.Enter("SelectedItemDetailsUpdate", "Library", SelectionSummary()))
-        {
-            OnPropertyChanged(nameof(SelectedItem));
-            OnPropertyChanged(nameof(SelectionCountText));
-        }
+        NotifyLibrarySelectionDetailsChanged();
         UpdateRenameReadiness();
         RaiseCommandStates();
     }
@@ -345,20 +354,21 @@ public sealed class MainViewModel : ViewModelBase
             BucketSelectedItems.Add(item);
         }
 
-        OnPropertyChanged(nameof(BucketSelectionCountText));
+        NotifyBucketSelectionDetailsChanged();
         RaiseCommandStates();
     }
 
-    public void ApplyTag(TagButtonViewModel tag)
+    public void ApplyTag(TagButtonViewModel tag, IEnumerable<ImageItemViewModel>? targets = null)
     {
-        if (SelectedItems.Count == 0)
+        var targetList = (targets ?? SelectedItems).Distinct().ToList();
+        if (targetList.Count == 0)
         {
             SetStatus("Select one or more images before applying a tag.", isWarning: true);
             return;
         }
 
-        var message = ApplyTagTo(SelectedItems, tag.Category, tag.Value);
-        SetStatus(message ?? $"Applied {tag.Value} to {SelectedItems.Count} selected image(s).", message is not null);
+        var message = ApplyTagTo(targetList, tag.Category, tag.Value);
+        SetStatus(message ?? $"Applied {tag.Value} to {targetList.Count} selected image(s).", message is not null);
         UpdateAfterTagsChanged();
     }
 
@@ -484,16 +494,17 @@ public sealed class MainViewModel : ViewModelBase
         ReplaceSelection(stillSelected);
     }
 
-    private void ApplyBucket(BucketDefinitionViewModel bucket)
+    public void ApplyBucket(BucketDefinitionViewModel bucket, IEnumerable<ImageItemViewModel>? targets = null)
     {
-        if (BucketSelectedItems.Count == 0)
+        var targetList = (targets ?? BucketSelectedItems).Distinct().ToList();
+        if (targetList.Count == 0)
         {
             SetStatus("Select one or more bucket images before applying a bucket.", isWarning: true);
             return;
         }
 
-        var message = ApplyTagTo(BucketSelectedItems, bucket.Category, bucket.Value);
-        SetStatus(message ?? $"Applied {bucket.Category}={bucket.Value} to {BucketSelectedItems.Count} image(s).", message is not null);
+        var message = ApplyTagTo(targetList, bucket.Category, bucket.Value);
+        SetStatus(message ?? $"Applied {bucket.Category}={bucket.Value} to {targetList.Count} image(s).", message is not null);
         UpdateAfterTagsChanged();
     }
 
@@ -546,6 +557,19 @@ public sealed class MainViewModel : ViewModelBase
 
         ResetViewModels(TemporaryTagReset.Reset(CurrentSelectedItems()));
         SetStatus($"Cleared temporary tags from {SelectedItems.Count} selected image(s).");
+        UpdateAfterTagsChanged();
+    }
+
+    private void ClearBucketSelectedTemporaryTags()
+    {
+        if (BucketSelectedItems.Count == 0)
+        {
+            SetStatus("Select one or more bucket images before clearing temporary tags.", isWarning: true);
+            return;
+        }
+
+        ResetViewModels(TemporaryTagReset.Reset(BucketSelectedItems.Select(item => item.Item)));
+        SetStatus($"Cleared temporary tags from {BucketSelectedItems.Count} selected bucket image(s).");
         UpdateAfterTagsChanged();
     }
 
@@ -634,6 +658,8 @@ public sealed class MainViewModel : ViewModelBase
         _lastPreviewScope = null;
         _ = SaveWorkInProgressAsync();
         RefreshBucketPage();
+        NotifyLibrarySelectionDetailsChanged();
+        NotifyBucketSelectionDetailsChanged();
         UpdateRenameReadiness();
         RaiseCommandStates();
     }
@@ -681,7 +707,7 @@ public sealed class MainViewModel : ViewModelBase
         BucketSelectedItems.Clear();
         OnPropertyChanged(nameof(BucketPageCount));
         OnPropertyChanged(nameof(BucketPageText));
-        OnPropertyChanged(nameof(BucketSelectionCountText));
+        NotifyBucketSelectionDetailsChanged();
         RaiseCommandStates();
     }
 
@@ -844,6 +870,7 @@ public sealed class MainViewModel : ViewModelBase
         RenameSelectedCommand.RaiseCanExecuteChanged();
         ApplyDefaultToPageCommand.RaiseCanExecuteChanged();
         ClearSelectedTemporaryTagsCommand.RaiseCanExecuteChanged();
+        ClearBucketSelectedTemporaryTagsCommand.RaiseCanExecuteChanged();
         ClearCurrentBucketPassTagsCommand.RaiseCanExecuteChanged();
         ClearAllTemporaryTagsCommand.RaiseCanExecuteChanged();
         NextBucketPageCommand.RaiseCanExecuteChanged();
@@ -867,6 +894,77 @@ public sealed class MainViewModel : ViewModelBase
         using var logScope = DebugLog?.Enter("ValidationUpdate", selected: SelectionSummary());
         var readiness = RenameReadiness.Evaluate(CurrentSelectedItems());
         RenameBlockReason = readiness.CanPreview ? "Ready to preview selected images." : readiness.Message;
+    }
+
+    private void NotifyLibrarySelectionDetailsChanged()
+    {
+        using (DebugLog?.Enter("SelectedItemDetailsUpdate", "Library", SelectionSummary()))
+        {
+            OnPropertyChanged(nameof(SelectedItem));
+            OnPropertyChanged(nameof(SingleSelectionDetailItem));
+            OnPropertyChanged(nameof(SelectionCountText));
+            OnPropertyChanged(nameof(SelectionAggregateText));
+        }
+    }
+
+    private void NotifyBucketSelectionDetailsChanged()
+    {
+        using (DebugLog?.Enter("SelectedItemDetailsUpdate", "Bucket", BucketSelectionSummary()))
+        {
+            OnPropertyChanged(nameof(BucketSelectedItem));
+            OnPropertyChanged(nameof(BucketSingleSelectionDetailItem));
+            OnPropertyChanged(nameof(BucketSelectionCountText));
+            OnPropertyChanged(nameof(BucketSelectionAggregateText));
+        }
+    }
+
+    private static string BuildSelectionAggregate(IEnumerable<ImageItemViewModel> selection)
+    {
+        var items = selection.ToList();
+        if (items.Count == 0)
+        {
+            return "No image selected.";
+        }
+
+        if (items.Count == 1)
+        {
+            return "Selected image details below.";
+        }
+
+        var changed = items.Count(item => item.IsDirty);
+        var invalid = items.Count(item => item.HasInvalidTags);
+        var incomplete = items.Count(item => item.HasIncompleteTags);
+
+        return string.Join(Environment.NewLine, [
+            $"Selected: {items.Count} images",
+            $"Changed: {changed}",
+            $"Invalid: {invalid}",
+            $"Incomplete: {incomplete}",
+            $"Common tags: {BuildCommonTagsText(items)}"
+        ]);
+    }
+
+    private static string BuildCommonTagsText(IReadOnlyCollection<ImageItemViewModel> items)
+    {
+        var common = new[]
+        {
+            CommonTag("gender", items.Select(item => item.Item.CurrentTags.Gender)),
+            CommonTag("role", items.Select(item => item.Item.CurrentTags.Role)),
+            CommonTag("style", items.Select(item => item.Item.CurrentTags.WeaponOrStyle)),
+            CommonTag("race", items.Select(item => item.Item.CurrentTags.Race))
+        }.Where(value => value is not null);
+
+        return string.Join("; ", common) is { Length: > 0 } tags ? tags : "none";
+    }
+
+    private static string? CommonTag(string label, IEnumerable<string?> values)
+    {
+        var normalized = values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return normalized.Count == 1 ? $"{label}={normalized[0]}" : null;
     }
 
     private void SetStatus(string message, bool isWarning = false)

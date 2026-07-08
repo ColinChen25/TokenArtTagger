@@ -69,6 +69,13 @@
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                        <ContentPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style x:Key="SelectableDetailText" TargetType="TextBox">
             <Setter Property="IsReadOnly" Value="True" />
@@ -79,6 +86,23 @@
             <Setter Property="IsTabStop" Value="False" />
             <Setter Property="Margin" Value="0,4,0,12" />
         </Style>
+        <DataTemplate x:Key="SelectedImageDetailsTemplate" DataType="{x:Type vm:ImageItemViewModel}">
+            <StackPanel>
+                <TextBlock Text="Current filename" FontWeight="SemiBold" />
+                <TextBox Text="{Binding FileName, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
+                <TextBlock Text="Full path" FontWeight="SemiBold" />
+                <TextBox Text="{Binding FullPath, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" FontWeight="SemiBold" />
+                <Button Style="{StaticResource ToolButton}" Margin="0,0,0,6" Content="Show in Explorer" Click="ShowSelectedInExplorer_Click" />
+                <Separator Margin="0,12" />
+                <TextBlock Text="Parsed tags" FontWeight="SemiBold" />
+                <TextBox Text="{Binding ParsedTagsText, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
+                <TextBlock Text="Current tags" FontWeight="SemiBold" />
+                <TextBox Text="{Binding CurrentTagsText, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
+                <TextBlock Text="Proposed filename" FontWeight="SemiBold" />
+                <TextBox Text="{Binding ProposedFileName, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" Foreground="#245C37" />
+                <TextBox Text="{Binding PreviewError, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" Foreground="#9C1F1F" />
+            </StackPanel>
+        </DataTemplate>
         <DataTemplate x:Key="ImageTileTemplate" DataType="{x:Type vm:ImageItemViewModel}">
             <Border Background="#FAFAF7" CornerRadius="6" Padding="8"
                     MouseRightButtonUp="ImageTile_RightClick"
@@ -91,14 +115,12 @@
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
                                 <Setter Property="Background" Value="#EEF6FF" />
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding HasIncompleteTags}" Value="True">
-                                <Setter Property="BorderBrush" Value="#B7791F" />
-                                <Setter Property="BorderThickness" Value="2" />
+                                <Setter Property="BorderBrush" Value="#1D4ED8" />
+                                <Setter Property="BorderThickness" Value="3" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding HasInvalidTags}" Value="True">
                                 <Setter Property="BorderBrush" Value="#B42318" />
-                                <Setter Property="BorderThickness" Value="2" />
+                                <Setter Property="BorderThickness" Value="3" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -135,6 +157,18 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
+                            <TextBlock Text="Needs tags" Foreground="#8A4D00" FontWeight="SemiBold" Margin="0,0,6,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasIncompleteTags}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                             <TextBlock Text="Changed" Foreground="#8A4D00" FontWeight="SemiBold">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
@@ -150,22 +184,6 @@
                         </DockPanel>
                         <TextBlock Text="{Binding PreviewError}" Foreground="#9C1F1F" TextWrapping="Wrap" MaxHeight="34" />
                     </StackPanel>
-                    <Border Grid.RowSpan="5"
-                            BorderBrush="#1D4ED8"
-                            BorderThickness="3"
-                            CornerRadius="5"
-                            IsHitTestVisible="False">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=IsSelected}" Value="True">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                    </Border>
                 </Grid>
             </Border>
         </DataTemplate>
@@ -301,20 +319,8 @@
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel>
                                     <TextBlock Text="{Binding SelectionCountText}" FontWeight="SemiBold" Margin="0,0,0,10" />
-                                    <StackPanel DataContext="{Binding SelectedItem}">
-                                        <TextBox Text="{Binding FullPath, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" FontWeight="SemiBold" />
-                                        <Button Style="{StaticResource ToolButton}" Margin="0,0,0,6" Content="Show in Explorer" Click="ShowSelectedInExplorer_Click" />
-                                        <Separator Margin="0,12" />
-                                        <TextBlock Text="Current filename" FontWeight="SemiBold" />
-                                        <TextBox Text="{Binding FileName, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
-                                        <TextBlock Text="Parsed tags" FontWeight="SemiBold" />
-                                        <TextBox Text="{Binding ParsedTagsText, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
-                                        <TextBlock Text="Current tags" FontWeight="SemiBold" />
-                                        <TextBox Text="{Binding CurrentTagsText, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
-                                        <TextBlock Text="Proposed filename" FontWeight="SemiBold" />
-                                        <TextBox Text="{Binding ProposedFileName, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" Foreground="#245C37" />
-                                        <TextBox Text="{Binding PreviewError, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" Foreground="#9C1F1F" />
-                                    </StackPanel>
+                                    <TextBox Text="{Binding SelectionAggregateText, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
+                                    <ContentControl Content="{Binding SingleSelectionDetailItem}" ContentTemplate="{StaticResource SelectedImageDetailsTemplate}" />
                                     <Separator Margin="0,12" />
                                     <WrapPanel Margin="0,0,0,12">
                                         <Button Style="{StaticResource ToolButton}" Margin="0,0,6,6" Content="Clear Selected Temporary Tags" Command="{Binding ClearSelectedTemporaryTagsCommand}" />
@@ -359,7 +365,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="250" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="260" />
+                            <ColumnDefinition Width="330" />
                         </Grid.ColumnDefinitions>
 
                         <Border Grid.Column="0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="12">
@@ -417,17 +423,26 @@
                         </Border>
 
                         <Border Grid.Column="2" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="12">
-                            <StackPanel>
-                                <TextBlock Text="Bucket Selection" Style="{StaticResource PanelTitle}" />
-                                <TextBlock Text="{Binding BucketSelectionCountText}" FontWeight="SemiBold" Margin="0,0,0,8" />
-                                <TextBlock Text="Ctrl+click, Shift+click, arrow keys, Ctrl+A, and Escape work in the current page." TextWrapping="Wrap" Foreground="#555555" />
-                                <Separator Margin="0,12" />
-                                <TextBlock Text="Partial bucket tags are saved as work-in-progress app data outside the image folder and outside the repository." TextWrapping="Wrap" />
-                                <Separator Margin="0,12" />
-                                <Button Style="{StaticResource ToolButton}" Margin="0,0,0,6" Content="Clear Selected Temporary Tags" Command="{Binding ClearSelectedTemporaryTagsCommand}" />
-                                <Button Style="{StaticResource ToolButton}" Margin="0,0,0,6" Content="Clear Current Bucket Pass Tags" Command="{Binding ClearCurrentBucketPassTagsCommand}" />
-                                <Button Style="{StaticResource ToolButton}" Margin="0,0,0,6" Content="Clear All Temporary Tags" Command="{Binding ClearAllTemporaryTagsCommand}" />
-                            </StackPanel>
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" Text="Selection" Style="{StaticResource PanelTitle}" />
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding BucketSelectionCountText}" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                        <TextBox Text="{Binding BucketSelectionAggregateText, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
+                                        <ContentControl Content="{Binding BucketSingleSelectionDetailItem}" ContentTemplate="{StaticResource SelectedImageDetailsTemplate}" />
+                                        <Separator Margin="0,12" />
+                                        <WrapPanel Margin="0,0,0,12">
+                                            <Button Style="{StaticResource ToolButton}" Margin="0,0,6,6" Content="Clear Selected Temporary Tags" Command="{Binding ClearBucketSelectedTemporaryTagsCommand}" />
+                                            <Button Style="{StaticResource ToolButton}" Margin="0,0,6,6" Content="Clear Current Bucket Pass Tags" Command="{Binding ClearCurrentBucketPassTagsCommand}" />
+                                            <Button Style="{StaticResource ToolButton}" Margin="0,0,6,6" Content="Clear All Temporary Tags" Command="{Binding ClearAllTemporaryTagsCommand}" />
+                                        </WrapPanel>
+                                        <Separator Margin="0,0,0,12" />
+                                        <TextBlock Text="{Binding SelectedBucketPass.DisplayName, StringFormat=Current pass: {0}}" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                        <TextBlock Text="Ctrl+click, Shift+click, arrow keys, Ctrl+A, and Escape work in the current page." TextWrapping="Wrap" Foreground="#555555" />
+                                        <TextBlock Text="Partial bucket tags are saved as work-in-progress app data outside the image folder and outside the repository." TextWrapping="Wrap" Foreground="#555555" Margin="0,8,0,0" />
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </DockPanel>
                         </Border>
                     </Grid>
                 </Grid>

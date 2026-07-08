@@ -57,6 +57,11 @@ public partial class MainWindow : Window
                 return;
             }
 
+            if (ReferenceEquals(list, LibraryList))
+            {
+                return;
+            }
+
             _rectangleList = list;
             _rectangleStartPoint = _dragStartPoint;
             _isRectangleSelecting = true;

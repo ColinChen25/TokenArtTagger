@@ -1,4 +1,4 @@
-# TokenArtTagger v0.2.3
+# TokenArtTagger v0.2.5
 
 TokenArtTagger is a small local Windows WPF app for quickly tagging tabletop RPG character art, building partial tags with virtual buckets, and previewing safe in-place renames.
 
@@ -75,7 +75,7 @@ The original extension and extension casing are preserved.
 - No AI tagging or automatic tag suggestions.
 - Thumbnail decode failures are shown as blank thumbnails rather than blocking scan/rename.
 - Middle-click autoscroll is not implemented; normal scrollbar dragging and mouse wheel scrolling are the supported fast-scroll methods.
-- Rectangle selection is basic: drag from empty grid space to select intersecting visible tiles. Ctrl-drag toggles intersecting tiles.
+- Library mode rectangle selection is temporarily disabled in v0.2.5 while its freeze is investigated. Bucket Tagging mode still supports rectangle selection.
 - Animated WebP playback depends on installed Windows imaging codec behavior and may fall back to a static frame.
 
 ## Tests

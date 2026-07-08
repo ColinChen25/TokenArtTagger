@@ -8,6 +8,8 @@
         mc:Ignorable="d"
         Title="{Binding AppTitle}" Height="860" MinHeight="680" Width="1380" MinWidth="1060"
         Background="#F4F3EF"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing"
         PreviewKeyDown="Window_PreviewKeyDown"
         SizeChanged="Window_SizeChanged"
         UseLayoutRounding="True"
@@ -211,16 +213,17 @@
                            Visibility="{Binding FilterText, Converter={StaticResource StringIsNullOrWhiteSpaceToVisibilityConverter}}" />
             </Grid>
             <StackPanel Grid.Column="3" Orientation="Horizontal">
-                <Button Style="{StaticResource ScanButton}" Content="Scan Folder" Command="{Binding ScanCommand}" />
+                <Button Style="{StaticResource ScanButton}" Content="Scan Folder" Command="{Binding ScanCommand}" Click="ScanFolder_Click" />
                 <Button Style="{StaticResource ToolButton}" Content="Preview Selected" Command="{Binding PreviewRenameCommand}" />
                 <Button Style="{StaticResource ToolButton}" Content="Preview Changed" Command="{Binding PreviewChangedCommand}" />
                 <Button Style="{StaticResource ToolButton}" Content="Cancel Preview" Command="{Binding CancelPreviewCommand}" />
                 <Button Style="{StaticResource ToolButton}" Content="Rename Selected" Command="{Binding RenameSelectedCommand}"
                         ToolTip="{Binding RenameBlockReason}" />
+                <Button Style="{StaticResource ToolButton}" Content="Open Logs" Click="OpenLogsFolder_Click" />
             </StackPanel>
         </Grid>
 
-        <TabControl Grid.Row="1">
+        <TabControl x:Name="MainTabs" Grid.Row="1" SelectionChanged="MainTabs_SelectionChanged">
             <TabItem Header="Library">
                 <Grid Margin="0,10,0,0">
                     <Grid.ColumnDefinitions>

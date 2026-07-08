@@ -31,11 +31,22 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
         </Style>
+        <Style x:Key="ScanButton" TargetType="Button" BasedOn="{StaticResource ToolButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsScanReminderActive}" Value="True">
+                    <Setter Property="Background" Value="#FFF1D6" />
+                    <Setter Property="BorderBrush" Value="#B7791F" />
+                    <Setter Property="BorderThickness" Value="2" />
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
         <Style x:Key="TagButton" TargetType="Button">
             <Setter Property="Width" Value="82" />
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="Margin" Value="0,0,6,6" />
             <Setter Property="Padding" Value="10,4" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="TextBlock.TextAlignment" Value="Center" />
@@ -200,7 +211,7 @@
                            Visibility="{Binding FilterText, Converter={StaticResource StringIsNullOrWhiteSpaceToVisibilityConverter}}" />
             </Grid>
             <StackPanel Grid.Column="3" Orientation="Horizontal">
-                <Button Style="{StaticResource ToolButton}" Content="Scan Folder" Command="{Binding ScanCommand}" />
+                <Button Style="{StaticResource ScanButton}" Content="Scan Folder" Command="{Binding ScanCommand}" />
                 <Button Style="{StaticResource ToolButton}" Content="Preview Selected" Command="{Binding PreviewRenameCommand}" />
                 <Button Style="{StaticResource ToolButton}" Content="Preview Changed" Command="{Binding PreviewChangedCommand}" />
                 <Button Style="{StaticResource ToolButton}" Content="Cancel Preview" Command="{Binding CancelPreviewCommand}" />
@@ -233,13 +244,13 @@
                                                                     Command="{Binding DataContext.ApplyTagCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                     CommandParameter="{Binding}"
                                                                     ToolTip="{Binding Group}">
-                                                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextAlignment="Center" />
+                                                                <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextAlignment="Center" HorizontalAlignment="Center" />
                                                             </Button>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
                                                     <ItemsControl.ItemsPanel>
                                                         <ItemsPanelTemplate>
-                                                            <WrapPanel />
+                                                            <WrapPanel HorizontalAlignment="Center" />
                                                         </ItemsPanelTemplate>
                                                     </ItemsControl.ItemsPanel>
                                                 </ItemsControl>
@@ -358,13 +369,13 @@
                                                 <Button Style="{StaticResource BucketButton}"
                                                         Command="{Binding DataContext.ApplyBucketCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                         CommandParameter="{Binding}">
-                                                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextAlignment="Center" />
+                                                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextAlignment="Center" HorizontalAlignment="Center" />
                                                 </Button>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
-                                                <WrapPanel />
+                                                <WrapPanel HorizontalAlignment="Center" />
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                     </ItemsControl>

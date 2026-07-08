@@ -302,18 +302,18 @@
                                 <StackPanel>
                                     <TextBlock Text="{Binding SelectionCountText}" FontWeight="SemiBold" Margin="0,0,0,10" />
                                     <StackPanel DataContext="{Binding SelectedItem}">
-                                        <TextBox Text="{Binding FullPath}" Style="{StaticResource SelectableDetailText}" FontWeight="SemiBold" />
+                                        <TextBox Text="{Binding FullPath, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" FontWeight="SemiBold" />
                                         <Button Style="{StaticResource ToolButton}" Margin="0,0,0,6" Content="Show in Explorer" Click="ShowSelectedInExplorer_Click" />
                                         <Separator Margin="0,12" />
                                         <TextBlock Text="Current filename" FontWeight="SemiBold" />
-                                        <TextBox Text="{Binding FileName}" Style="{StaticResource SelectableDetailText}" />
+                                        <TextBox Text="{Binding FileName, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
                                         <TextBlock Text="Parsed tags" FontWeight="SemiBold" />
-                                        <TextBox Text="{Binding ParsedTagsText}" Style="{StaticResource SelectableDetailText}" />
+                                        <TextBox Text="{Binding ParsedTagsText, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
                                         <TextBlock Text="Current tags" FontWeight="SemiBold" />
-                                        <TextBox Text="{Binding CurrentTagsText}" Style="{StaticResource SelectableDetailText}" />
+                                        <TextBox Text="{Binding CurrentTagsText, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
                                         <TextBlock Text="Proposed filename" FontWeight="SemiBold" />
-                                        <TextBox Text="{Binding ProposedFileName}" Style="{StaticResource SelectableDetailText}" Foreground="#245C37" />
-                                        <TextBox Text="{Binding PreviewError}" Style="{StaticResource SelectableDetailText}" Foreground="#9C1F1F" />
+                                        <TextBox Text="{Binding ProposedFileName, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" Foreground="#245C37" />
+                                        <TextBox Text="{Binding PreviewError, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" Foreground="#9C1F1F" />
                                     </StackPanel>
                                     <Separator Margin="0,12" />
                                     <WrapPanel Margin="0,0,0,12">

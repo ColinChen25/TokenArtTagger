@@ -40,6 +40,11 @@ public static class FileRenamer
                         selectedItem.Extension,
                         existingNames);
                     var proposedPath = Path.Combine(selectedItem.DirectoryPath, proposedFileName);
+                    if (string.Equals(proposedPath, selectedItem.FullPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        entries.Add(new RenamePreviewEntry(selectedItem, hash, proposedFileName, proposedPath, "already in desired hash filename format"));
+                        continue;
+                    }
 
                     existingNames.Add(proposedFileName);
                     entries.Add(new RenamePreviewEntry(selectedItem, hash, proposedFileName, proposedPath, null));

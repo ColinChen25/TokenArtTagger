@@ -24,6 +24,24 @@ public sealed class DebugEventLoggerTests
     }
 
     [TestMethod]
+    public void Create_UsesSortableVersionedFilenameAndWritesHeader()
+    {
+        using var temp = new TemporaryDirectory();
+
+        string logFilePath;
+        using (var logger = DebugEventLogger.Create(temp.Path, new DateTimeOffset(2026, 7, 8, 23, 14, 55, TimeSpan.Zero)))
+        {
+            logFilePath = logger.LogFilePath;
+        }
+
+        Assert.AreEqual($"2026-07-08_231455_{AppInfo.Version}.log", Path.GetFileName(logFilePath));
+        var text = File.ReadAllText(logFilePath);
+        StringAssert.Contains(text, $"appVersion=\"{AppInfo.Version}\"");
+        StringAssert.Contains(text, "runtime=\"");
+        StringAssert.Contains(text, "os=\"");
+    }
+
+    [TestMethod]
     public void SanitizeValue_RemovesLineBreaksAndTabs()
     {
         var value = DebugEventLogger.SanitizeValue("alpha\r\nbeta\tgamma");

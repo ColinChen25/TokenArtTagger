@@ -30,6 +30,8 @@ public sealed class MainViewModel : ViewModelBase
     private int _bucketPageSize = 100;
     private int _bucketPageIndex;
     private string? _selectedDefaultBucketValue;
+    private BucketWorkingSession? _bucketWorkingSession;
+    private bool _isBucketModeActive;
 
     public MainViewModel()
     {
@@ -52,13 +54,14 @@ public sealed class MainViewModel : ViewModelBase
         BrowseCommand = new RelayCommand(_ => BrowseFolder());
         ScanCommand = new AsyncRelayCommand(_ => ScanAsync(), _ => !string.IsNullOrWhiteSpace(FolderPath));
         ApplyTagCommand = new RelayCommand(parameter => ApplyTag((TagButtonViewModel)parameter!), parameter => parameter is TagButtonViewModel);
-        PreviewRenameCommand = new AsyncRelayCommand(_ => PreviewRenameAsync(RenamePreviewScope.Selected), _ => SelectedItems.Count > 0);
+        PreviewRenameCommand = new AsyncRelayCommand(_ => PreviewRenameAsync(RenamePreviewScope.Selected), _ => ActiveSelectedViewModels().Count > 0);
         PreviewChangedCommand = new AsyncRelayCommand(_ => PreviewRenameAsync(RenamePreviewScope.Changed), _ => Items.Any(item => item.IsDirty));
         CancelPreviewCommand = new RelayCommand(_ => CancelPreview(), _ => _previewCancellation is not null);
         RenameSelectedCommand = new AsyncRelayCommand(_ => RenameSelectedAsync(), _ => RenameReadiness.Evaluate(CurrentSelectedItems()).CanPreview);
         UndoLastBatchCommand = new RelayCommand(_ => SetStatus($"Undo is not implemented in {AppInfo.Version}. Use the JSON undo log for manual recovery.", isWarning: true));
         ApplyBucketCommand = new RelayCommand(parameter => ApplyBucket((BucketDefinitionViewModel)parameter!), parameter => parameter is BucketDefinitionViewModel);
         ApplyDefaultToPageCommand = new RelayCommand(_ => ApplyDefaultToCurrentPage(), _ => BucketPageItems.Count > 0 && SelectedDefaultBucketValue is not null);
+        RefreshBucketWorkingSetCommand = new RelayCommand(_ => RebuildBucketWorkingSession(), _ => Items.Count > 0);
         ClearSelectedTemporaryTagsCommand = new RelayCommand(_ => ClearSelectedTemporaryTags(), _ => SelectedItems.Count > 0);
         ClearBucketSelectedTemporaryTagsCommand = new RelayCommand(_ => ClearBucketSelectedTemporaryTags(), _ => BucketSelectedItems.Count > 0);
         ClearCurrentBucketPassTagsCommand = new RelayCommand(_ => ClearCurrentBucketPassTags(), _ => Items.Count > 0);
@@ -120,6 +123,8 @@ public sealed class MainViewModel : ViewModelBase
     public string SelectionAggregateText => BuildSelectionAggregate(SelectedItems);
 
     public string BucketSelectionAggregateText => BuildSelectionAggregate(BucketSelectedItems);
+
+    public string BucketWorkingSetSummary => BuildBucketWorkingSetSummary();
 
     public string BucketPageText => BucketPageCount == 0
         ? "Page 0 of 0"
@@ -184,7 +189,7 @@ public sealed class MainViewModel : ViewModelBase
             {
                 BucketPageIndex = 0;
                 RefreshBucketDefinitions();
-                RefreshBucketPage();
+                RebuildBucketWorkingSession();
             }
         }
     }
@@ -197,7 +202,7 @@ public sealed class MainViewModel : ViewModelBase
             if (SetProperty(ref _selectedBucketFilter, value))
             {
                 BucketPageIndex = 0;
-                RefreshBucketPage();
+                RebuildBucketWorkingSession();
             }
         }
     }
@@ -259,6 +264,8 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand ApplyDefaultToPageCommand { get; }
 
+    public RelayCommand RefreshBucketWorkingSetCommand { get; }
+
     public RelayCommand ClearSelectedTemporaryTagsCommand { get; }
 
     public RelayCommand ClearBucketSelectedTemporaryTagsCommand { get; }
@@ -289,6 +296,7 @@ public sealed class MainViewModel : ViewModelBase
         SelectedItems.Clear();
         BucketSelectedItems.Clear();
         BucketPageItems.Clear();
+        _bucketWorkingSession = null;
         _thumbnailService.ClearMemory();
 
         var result = await FileScanner.ScanAsync(FolderPath);
@@ -299,7 +307,7 @@ public sealed class MainViewModel : ViewModelBase
             Items.Add(new ImageItemViewModel(item));
         }
 
-        RefreshBucketPage();
+        RebuildBucketWorkingSession();
         var legacyUndoWarning = UndoLogService.HasLegacyUndoFolder(FolderPath)
             ? $" Legacy undo folder found at {UndoLogService.LegacyUndoFolderName}; new undo logs now go to app data."
             : string.Empty;
@@ -355,6 +363,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         NotifyBucketSelectionDetailsChanged();
+        UpdateRenameReadiness();
         RaiseCommandStates();
     }
 
@@ -657,7 +666,8 @@ public sealed class MainViewModel : ViewModelBase
         _lastPreview = null;
         _lastPreviewScope = null;
         _ = SaveWorkInProgressAsync();
-        RefreshBucketPage();
+        UpdateBucketPassCompletionStates();
+        OnPropertyChanged(nameof(BucketWorkingSetSummary));
         NotifyLibrarySelectionDetailsChanged();
         NotifyBucketSelectionDetailsChanged();
         UpdateRenameReadiness();
@@ -676,18 +686,35 @@ public sealed class MainViewModel : ViewModelBase
         SelectedDefaultBucketValue = BucketBuckets.FirstOrDefault()?.Value;
     }
 
+    private void RebuildBucketWorkingSession()
+    {
+        using var logScope = DebugLog?.Enter("RebuildBucketWorkingSet", "Bucket", BucketSelectionSummary(), new Dictionary<string, string?>
+        {
+            ["pass"] = SelectedBucketPass.DisplayName,
+            ["filter"] = SelectedBucketFilter.ToString()
+        });
+        _bucketWorkingSession = BucketWorkingSession.Create(
+            CurrentAllItems(),
+            SelectedBucketPass.Pass,
+            SelectedBucketFilter);
+        BucketPageIndex = 0;
+        RefreshBucketPage();
+    }
+
     private void RefreshBucketPage()
     {
         using var logScope = DebugLog?.Enter("RefreshBucketPage", "Bucket", BucketSelectionSummary(), new Dictionary<string, string?>
         {
             ["pass"] = SelectedBucketPass.DisplayName,
             ["filter"] = SelectedBucketFilter.ToString(),
-            ["pageSize"] = BucketPageSize.ToString()
+            ["pageSize"] = BucketPageSize.ToString(),
+            ["searchLength"] = _appliedFilterText.Length.ToString()
         });
-        var workingSet = BucketWorkingSet.Filter(
+        _bucketWorkingSession ??= BucketWorkingSession.Create(
             CurrentAllItems(),
             SelectedBucketPass.Pass,
             SelectedBucketFilter);
+        var workingSet = _bucketWorkingSession.Materialize(CurrentAllItems(), _appliedFilterText);
         BucketPageCount = workingSet.Count == 0 ? 0 : (int)Math.Ceiling(workingSet.Count / (double)BucketPageSize);
         if (BucketPageIndex >= BucketPageCount)
         {
@@ -707,6 +734,8 @@ public sealed class MainViewModel : ViewModelBase
         BucketSelectedItems.Clear();
         OnPropertyChanged(nameof(BucketPageCount));
         OnPropertyChanged(nameof(BucketPageText));
+        OnPropertyChanged(nameof(BucketWorkingSetSummary));
+        UpdateBucketPassCompletionStates();
         NotifyBucketSelectionDetailsChanged();
         RaiseCommandStates();
     }
@@ -720,6 +749,32 @@ public sealed class MainViewModel : ViewModelBase
     public bool IsMissingForCurrentBucketPass(ImageItemViewModel item)
     {
         return BucketWorkingSet.Filter([item.Item], SelectedBucketPass.Pass, BucketFilterMode.MissingOnly).Count > 0;
+    }
+
+    public void SetBucketModeActive(bool isBucketModeActive)
+    {
+        if (_isBucketModeActive == isBucketModeActive)
+        {
+            return;
+        }
+
+        _isBucketModeActive = isBucketModeActive;
+        if (isBucketModeActive)
+        {
+            RebuildBucketWorkingSession();
+        }
+        else
+        {
+            _bucketWorkingSession = null;
+            BucketPageItems.Clear();
+            BucketSelectedItems.Clear();
+            UpdateBucketPassCompletionStates();
+            NotifyBucketSelectionDetailsChanged();
+            OnPropertyChanged(nameof(BucketWorkingSetSummary));
+        }
+
+        UpdateRenameReadiness();
+        RaiseCommandStates();
     }
 
     public void ShowWarning(string message)
@@ -844,6 +899,7 @@ public sealed class MainViewModel : ViewModelBase
 
                 _appliedFilterText = filterText;
                 ItemsView.Refresh();
+                RefreshBucketPage();
             });
         }
         catch (OperationCanceledException)
@@ -869,6 +925,7 @@ public sealed class MainViewModel : ViewModelBase
         CancelPreviewCommand.RaiseCanExecuteChanged();
         RenameSelectedCommand.RaiseCanExecuteChanged();
         ApplyDefaultToPageCommand.RaiseCanExecuteChanged();
+        RefreshBucketWorkingSetCommand.RaiseCanExecuteChanged();
         ClearSelectedTemporaryTagsCommand.RaiseCanExecuteChanged();
         ClearBucketSelectedTemporaryTagsCommand.RaiseCanExecuteChanged();
         ClearCurrentBucketPassTagsCommand.RaiseCanExecuteChanged();
@@ -881,7 +938,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private IReadOnlyList<ImageItem> CurrentSelectedItems()
     {
-        return SelectedItems.Select(item => item.Item).ToList();
+        return ActiveSelectedViewModels().Select(item => item.Item).ToList();
     }
 
     private IReadOnlyList<ImageItem> CurrentAllItems()
@@ -894,6 +951,37 @@ public sealed class MainViewModel : ViewModelBase
         using var logScope = DebugLog?.Enter("ValidationUpdate", selected: SelectionSummary());
         var readiness = RenameReadiness.Evaluate(CurrentSelectedItems());
         RenameBlockReason = readiness.CanPreview ? "Ready to preview selected images." : readiness.Message;
+    }
+
+    private IReadOnlyList<ImageItemViewModel> ActiveSelectedViewModels()
+    {
+        return _isBucketModeActive
+            ? BucketSelectedItems.ToList()
+            : SelectedItems.ToList();
+    }
+
+    private void UpdateBucketPassCompletionStates()
+    {
+        foreach (var item in Items)
+        {
+            item.IsCompleteForCurrentBucketPass = _isBucketModeActive &&
+                _bucketWorkingSession?.Contains(item.Item) == true &&
+                BucketWorkingSet.IsCompleteForPass(item.Item, SelectedBucketPass.Pass);
+        }
+    }
+
+    private string BuildBucketWorkingSetSummary()
+    {
+        if (_bucketWorkingSession is null)
+        {
+            return $"{SelectedBucketPass.DisplayName} pass - no active working set.";
+        }
+
+        var allItems = CurrentAllItems();
+        return $"{SelectedBucketPass.DisplayName} - {SelectedBucketFilter} working set: {_bucketWorkingSession.Count} images" +
+            $"{Environment.NewLine}Visible after search: {_bucketWorkingSession.Materialize(allItems, _appliedFilterText).Count}" +
+            $"{Environment.NewLine}Completed this pass: {_bucketWorkingSession.CompletedThisPassCount(allItems)}" +
+            $"{Environment.NewLine}Ready to rename: {_bucketWorkingSession.ReadyToRenameCount(allItems)}";
     }
 
     private void NotifyLibrarySelectionDetailsChanged()

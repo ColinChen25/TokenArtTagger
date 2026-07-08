@@ -74,6 +74,20 @@ public sealed class FileRenamerTests
     }
 
     [TestMethod]
+    public async Task BuildPreviewAsync_BlocksAlreadyDesiredHashFilename()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, "male-generic-human__74f81f.webp");
+        File.WriteAllBytes(path, [1, 2, 3, 4, 5]);
+        var item = ImageItem.FromPath(path);
+
+        var preview = await FileRenamer.BuildPreviewAsync([item]);
+
+        Assert.IsFalse(preview.CanRename);
+        StringAssert.Contains(preview.Entries[0].ErrorMessage!, "already in desired hash filename format");
+    }
+
+    [TestMethod]
     public async Task RenameAsync_RenamesInPlaceAndWritesUndoLog()
     {
         using var temp = new TempFolder();

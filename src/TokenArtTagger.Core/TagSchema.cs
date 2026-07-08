@@ -10,9 +10,32 @@ public static class TagSchema
 
     public static readonly IReadOnlyList<string> Genders = ["male", "female"];
     public static readonly IReadOnlyList<string> Roles = ["melee", "range", "caster", "generic"];
-    public static readonly IReadOnlyList<string> MeleeStyles = ["blade", "polearm", "dagger", "axe", "mace", "whip", "unarmed", "flail", "scythe", "blunt", "exotic"];
-    public static readonly IReadOnlyList<string> RangeStyles = ["bow", "gun", "crossbow", "thrown"];
+    public static readonly IReadOnlyList<string> MeleeStyles = ["blade", "polearm", "dagger", "axe", "mace", "whip", "unarmed", "flail", "scythe", "blunt", "thrown", "exotic"];
+    public static readonly IReadOnlyList<string> RangeStyles = ["polearm", "dagger", "axe", "thrown", "exotic", "bow", "gun", "crossbow"];
     public static readonly IReadOnlyList<string> CasterStyles = ["wizard", "cleric", "bard", "druid"];
+    private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> StyleAllowedRoles =
+        new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["blade"] = RoleSet("melee"),
+            ["polearm"] = RoleSet("melee", "range"),
+            ["mace"] = RoleSet("melee"),
+            ["flail"] = RoleSet("melee"),
+            ["whip"] = RoleSet("melee"),
+            ["unarmed"] = RoleSet("melee"),
+            ["scythe"] = RoleSet("melee"),
+            ["blunt"] = RoleSet("melee"),
+            ["dagger"] = RoleSet("melee", "range"),
+            ["axe"] = RoleSet("melee", "range"),
+            ["thrown"] = RoleSet("melee", "range"),
+            ["exotic"] = RoleSet("melee", "range"),
+            ["bow"] = RoleSet("range"),
+            ["gun"] = RoleSet("range"),
+            ["crossbow"] = RoleSet("range"),
+            ["wizard"] = RoleSet("caster"),
+            ["cleric"] = RoleSet("caster"),
+            ["bard"] = RoleSet("caster"),
+            ["druid"] = RoleSet("caster")
+        };
     public static readonly IReadOnlyList<string> Races =
     [
         "human",
@@ -104,13 +127,8 @@ public static class TagSchema
     public static bool IsKnownStyleForRole(string role, string style)
     {
         var normalizedStyle = NormalizeStyle(style);
-        return role switch
-        {
-            "melee" => Contains(MeleeStyles, normalizedStyle),
-            "range" => Contains(RangeStyles, normalizedStyle),
-            "caster" => Contains(CasterStyles, normalizedStyle),
-            _ => false
-        };
+        return StyleAllowedRoles.TryGetValue(normalizedStyle, out var roles) &&
+            roles.Contains(role.Trim().ToLowerInvariant());
     }
 
     public static IReadOnlyList<string> StylesForRole(string role)
@@ -135,6 +153,11 @@ public static class TagSchema
     private static bool Contains(IEnumerable<string> values, string value)
     {
         return values.Any(candidate => string.Equals(candidate, value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static IReadOnlySet<string> RoleSet(params string[] roles)
+    {
+        return roles.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 }
 

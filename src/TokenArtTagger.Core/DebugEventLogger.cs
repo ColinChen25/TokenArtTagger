@@ -14,6 +14,13 @@ public sealed class DebugEventLogger : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(logFilePath)!);
         var stream = new FileStream(logFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite);
         _writer = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
+        Write("LogHeader", details: new Dictionary<string, string?>
+        {
+            ["appVersion"] = AppInfo.Version,
+            ["configuration"] = BuildConfiguration(),
+            ["os"] = Environment.OSVersion.VersionString,
+            ["runtime"] = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription
+        });
     }
 
     public string LogFilePath { get; }
@@ -34,12 +41,12 @@ public sealed class DebugEventLogger : IDisposable
     public static DebugEventLogger Create(string logFolder, DateTimeOffset launchTime)
     {
         Directory.CreateDirectory(logFolder);
-        var baseName = $"tokenarttagger-{launchTime:yyyyMMdd-HHmmss-fff}.log";
+        var baseName = $"{launchTime:yyyy-MM-dd_HHmmss}_{AppInfo.Version}.log";
         var path = Path.Combine(logFolder, baseName);
         var counter = 1;
         while (File.Exists(path))
         {
-            path = Path.Combine(logFolder, $"tokenarttagger-{launchTime:yyyyMMdd-HHmmss-fff}-{counter}.log");
+            path = Path.Combine(logFolder, $"{launchTime:yyyy-MM-dd_HHmmss}_{AppInfo.Version}-{counter}.log");
             counter++;
         }
 
@@ -164,6 +171,15 @@ public sealed class DebugEventLogger : IDisposable
         var token = SanitizeValue(value);
         return string.Concat(token.Select(character =>
             char.IsLetterOrDigit(character) || character is '.' or '_' or '-' ? character : '_'));
+    }
+
+    private static string BuildConfiguration()
+    {
+#if DEBUG
+        return "Debug";
+#else
+        return "Release";
+#endif
     }
 
     private sealed class EventScope : IDisposable

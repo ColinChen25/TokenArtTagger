@@ -52,7 +52,7 @@ public sealed class FilenameGeneratorTests
 
         var error = Assert.ThrowsExactly<InvalidOperationException>(() => FilenameGenerator.Generate(tags, "a2d93c44", ".png"));
 
-        StringAssert.Contains(error.Message, "range requires bow, gun, crossbow, or thrown");
+        StringAssert.Contains(error.Message, "range requires polearm, dagger, axe, thrown, exotic, bow, gun, or crossbow");
     }
 
     [TestMethod]

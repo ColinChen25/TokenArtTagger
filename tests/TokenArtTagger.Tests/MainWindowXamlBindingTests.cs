@@ -29,7 +29,7 @@ public class MainWindowXamlBindingTests
 
         StringAssert.Contains(xaml, "Template TargetType=\"{x:Type ListBoxItem}\"");
         StringAssert.Contains(xaml, "BorderBrush\" Value=\"#1D4ED8\"");
-        StringAssert.Contains(xaml, "Needs tags");
+        StringAssert.Contains(xaml, "Needs");
         Assert.IsFalse(xaml.Contains("Grid.RowSpan=\"5\"", StringComparison.Ordinal), "Selected card outline should be drawn once by the card border, not by an inner full-card overlay.");
     }
 
@@ -44,9 +44,49 @@ public class MainWindowXamlBindingTests
         StringAssert.Contains(xaml, "Text=\"{Binding BucketSelectionAggregateText, Mode=OneWay}\"");
     }
 
+    [TestMethod]
+    public void ImageTileTemplateReservesFixedBottomStatusRow()
+    {
+        var xaml = ReadMainWindowXaml();
+
+        StringAssert.Contains(xaml, "x:Name=\"TileStatusBadges\"");
+        StringAssert.Contains(xaml, "<RowDefinition Height=\"26\" />");
+        StringAssert.Contains(xaml, "TextTrimming=\"CharacterEllipsis\"");
+        StringAssert.Contains(xaml, "LineStackingStrategy=\"BlockLineHeight\"");
+        StringAssert.Contains(xaml, "ToolTip=\"{Binding FileName}\"");
+        Assert.IsFalse(
+            xaml.Contains("StackPanel Grid.Row=\"4\" Orientation=\"Vertical\"", StringComparison.Ordinal),
+            "Status badges should live in a fixed bottom row instead of a flexible StackPanel that can be clipped by wrapped tags.");
+    }
+
+    [TestMethod]
+    public void LibraryAndBucketListsShareRectangleSelectionSafetyHandlers()
+    {
+        var xaml = ReadMainWindowXaml();
+
+        Assert.AreEqual(2, CountOccurrences(xaml, "PreviewMouseLeftButtonDown=\"ImageList_PreviewMouseLeftButtonDown\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "PreviewMouseLeftButtonUp=\"ImageList_PreviewMouseLeftButtonUp\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "MouseMove=\"ImageList_MouseMove\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "MouseLeave=\"ImageList_MouseLeave\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "LostMouseCapture=\"ImageList_LostMouseCapture\""));
+    }
+
     private static string ReadMainWindowXaml()
     {
         return File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "TokenArtTagger.App", "MainWindow.xaml"));
+    }
+
+    private static int CountOccurrences(string text, string value)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
     }
 
     private static string FindRepoRoot()

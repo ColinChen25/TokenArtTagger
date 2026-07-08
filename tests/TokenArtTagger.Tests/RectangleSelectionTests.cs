@@ -33,4 +33,27 @@ public sealed class RectangleSelectionTests
 
         CollectionAssert.AreEqual(new[] { "good" }, selected.ToArray());
     }
+
+    [TestMethod]
+    public void ClampTo_RestrictsDragRectangleToGridBounds()
+    {
+        var selection = new SelectionRectangle(-20, 10, 160, 80);
+
+        var clamped = selection.ClampTo(new SelectionRectangle(0, 0, 100, 100));
+
+        Assert.AreEqual(0, clamped.Left);
+        Assert.AreEqual(10, clamped.Top);
+        Assert.AreEqual(100, clamped.Right);
+        Assert.AreEqual(90, clamped.Bottom);
+    }
+
+    [TestMethod]
+    public void ClampTo_ReturnsInvalidRectangleWhenDragIsOutsideGridBounds()
+    {
+        var selection = new SelectionRectangle(130, 10, 40, 40);
+
+        var clamped = selection.ClampTo(new SelectionRectangle(0, 0, 100, 100));
+
+        Assert.IsFalse(clamped.IsValid);
+    }
 }

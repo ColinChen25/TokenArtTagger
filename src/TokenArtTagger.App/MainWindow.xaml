@@ -77,6 +77,13 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="TileBadge" TargetType="Border">
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="5,2" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="MinHeight" Value="20" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
         <Style x:Key="SelectableDetailText" TargetType="TextBox">
             <Setter Property="IsReadOnly" Value="True" />
             <Setter Property="BorderThickness" Value="0" />
@@ -128,74 +135,73 @@
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="122" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
+                        <RowDefinition Height="46" />
+                        <RowDefinition Height="20" />
+                        <RowDefinition Height="26" />
                     </Grid.RowDefinitions>
                     <Border Grid.Row="0" Background="#E8E5DE" CornerRadius="4">
                         <Image Source="{Binding Thumbnail}" Stretch="Uniform" Loaded="ThumbnailImage_Loaded" />
                     </Border>
-                    <TextBlock Grid.Row="1" Margin="0,7,0,0" Text="{Binding DisplayName}" TextWrapping="Wrap"
-                               FontWeight="SemiBold" MaxHeight="42" ToolTip="{Binding DisplayName}" />
-                    <TextBlock Grid.Row="2" Margin="0,4,0,0" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
-                               Foreground="#666666" ToolTip="{Binding FullPath}" />
-                    <TextBlock Grid.Row="3" Margin="0,4,0,0" Text="{Binding ProposedFileName}" TextWrapping="Wrap"
-                               Foreground="#245C37" MaxHeight="34" />
-                    <StackPanel Grid.Row="4" Orientation="Vertical" Margin="0,4,0,0">
-                        <DockPanel>
-                            <TextBlock Text="!" Foreground="#B42318" FontWeight="Bold" Margin="0,0,6,0"
-                                       ToolTip="{Binding TagIssueMessage}">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding HasRenameBlockingIssue}" Value="True">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <TextBlock Text="Ready" Foreground="#245C37" FontWeight="SemiBold" Margin="0,0,6,0">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsCompleteForCurrentBucketPass}" Value="True">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <TextBlock Text="Needs tags" Foreground="#8A4D00" FontWeight="SemiBold" Margin="0,0,6,0">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding HasIncompleteTags}" Value="True">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <TextBlock Text="Changed" Foreground="#8A4D00" FontWeight="SemiBold">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsDirty}" Value="True">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </DockPanel>
-                        <TextBlock Text="{Binding PreviewError}" Foreground="#9C1F1F" TextWrapping="Wrap" MaxHeight="34" />
-                    </StackPanel>
+                    <TextBlock Grid.Row="1" Margin="0,6,0,0" Text="{Binding DisplayName}" TextWrapping="Wrap"
+                               FontWeight="SemiBold" MaxHeight="36" LineHeight="16" LineStackingStrategy="BlockLineHeight"
+                               ToolTip="{Binding DisplayName}" />
+                    <TextBlock Grid.Row="2" Margin="0,2,0,0" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
+                               FontSize="10" LineHeight="13" LineStackingStrategy="BlockLineHeight"
+                               Foreground="#666666" ToolTip="{Binding FileName}" />
+                    <WrapPanel x:Name="TileStatusBadges" Grid.Row="3" VerticalAlignment="Bottom" ToolTip="{Binding PreviewError}">
+                        <Border Background="#FFF1F0" BorderBrush="#B42318" BorderThickness="1" ToolTip="{Binding TagIssueMessage}">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource TileBadge}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasRenameBlockingIssue}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="!" Foreground="#B42318" FontWeight="Bold" FontSize="11" />
+                        </Border>
+                        <Border Background="#E9F8EE" BorderBrush="#99D2A7" BorderThickness="1">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource TileBadge}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsCompleteForCurrentBucketPass}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="Ready" Foreground="#245C37" FontWeight="SemiBold" FontSize="11" />
+                        </Border>
+                        <Border Background="#FFF7E6" BorderBrush="#E4B55C" BorderThickness="1">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource TileBadge}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasIncompleteTags}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="Needs" Foreground="#8A4D00" FontWeight="SemiBold" FontSize="11" />
+                        </Border>
+                        <Border Background="#FFF7E6" BorderBrush="#E4B55C" BorderThickness="1">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource TileBadge}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsDirty}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="Changed" Foreground="#8A4D00" FontWeight="SemiBold" FontSize="11" />
+                        </Border>
+                    </WrapPanel>
                 </Grid>
             </Border>
         </DataTemplate>
@@ -307,6 +313,8 @@
                                      PreviewMouseLeftButtonDown="ImageList_PreviewMouseLeftButtonDown"
                                      PreviewMouseLeftButtonUp="ImageList_PreviewMouseLeftButtonUp"
                                      MouseMove="ImageList_MouseMove"
+                                     MouseLeave="ImageList_MouseLeave"
+                                     LostMouseCapture="ImageList_LostMouseCapture"
                                      KeyDown="LibraryList_KeyDown"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                      ScrollViewer.VerticalScrollBarVisibility="Auto">
@@ -417,6 +425,8 @@
                                          PreviewMouseLeftButtonDown="ImageList_PreviewMouseLeftButtonDown"
                                          PreviewMouseLeftButtonUp="ImageList_PreviewMouseLeftButtonUp"
                                          MouseMove="ImageList_MouseMove"
+                                         MouseLeave="ImageList_MouseLeave"
+                                         LostMouseCapture="ImageList_LostMouseCapture"
                                          KeyDown="BucketList_KeyDown"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                          ScrollViewer.VerticalScrollBarVisibility="Auto">

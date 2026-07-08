@@ -18,7 +18,6 @@ public partial class MainWindow : Window
     private System.Windows.Point _dragStartPoint;
     private System.Windows.Point _rectangleStartPoint;
     private System.Windows.Controls.ListBox? _rectangleList;
-    private IReadOnlyList<SelectionTile<ImageItemViewModel>> _rectangleSnapshot = [];
     private bool _isRectangleSelecting;
     private RubberBandAdorner? _rubberBandAdorner;
     private AdornerLayer? _rubberBandLayer;
@@ -59,8 +58,7 @@ public partial class MainWindow : Window
             }
 
             _rectangleList = list;
-            _rectangleStartPoint = ClampPointToList(list, _dragStartPoint);
-            _rectangleSnapshot = CaptureSelectionSnapshot(list);
+            _rectangleStartPoint = _dragStartPoint;
             _isRectangleSelecting = true;
             _rubberBandLayer = AdornerLayer.GetAdornerLayer(list);
             _rubberBandAdorner = new RubberBandAdorner(list);
@@ -116,7 +114,7 @@ public partial class MainWindow : Window
         System.Windows.Point endPoint;
         try
         {
-            endPoint = ClampPointToList(list, e.GetPosition(list));
+            endPoint = e.GetPosition(list);
         }
         catch (InvalidOperationException ex)
         {
@@ -125,10 +123,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        RemoveRubberBand();
+        _isRectangleSelecting = false;
+        _rectangleList = null;
+        list.ReleaseMouseCapture();
+
         if (Math.Abs(endPoint.X - _rectangleStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
             Math.Abs(endPoint.Y - _rectangleStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
         {
-            ResetRectangleSelectionState();
             e.Handled = true;
             return;
         }
@@ -143,13 +145,15 @@ public partial class MainWindow : Window
             _ = CrashLogService.WriteCrashLogAsync(ex);
         }
 
-        ResetRectangleSelectionState();
         e.Handled = true;
     }
 
     private void CancelRectangleSelection(string message, Exception exception)
     {
-        ResetRectangleSelectionState();
+        RemoveRubberBand();
+        _isRectangleSelecting = false;
+        _rectangleList?.ReleaseMouseCapture();
+        _rectangleList = null;
         ViewModel.ShowWarning(message);
         _ = CrashLogService.WriteCrashLogAsync(exception);
     }
@@ -161,24 +165,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var clampedEnd = _rectangleList is null
-            ? endPoint
-            : ClampPointToList(_rectangleList, endPoint);
-        _rubberBandAdorner.SelectionBounds = new Rect(_rectangleStartPoint, clampedEnd);
+        _rubberBandAdorner.SelectionBounds = new Rect(_rectangleStartPoint, endPoint);
         _rubberBandAdorner.InvalidateVisual();
-    }
-
-    private void ResetRectangleSelectionState()
-    {
-        RemoveRubberBand();
-        _isRectangleSelecting = false;
-        if (_rectangleList?.IsMouseCaptured == true)
-        {
-            _rectangleList.ReleaseMouseCapture();
-        }
-
-        _rectangleList = null;
-        _rectangleSnapshot = [];
     }
 
     private void RemoveRubberBand()
@@ -251,11 +239,6 @@ public partial class MainWindow : Window
 
     private void Window_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (_isRectangleSelecting)
-        {
-            ResetRectangleSelectionState();
-        }
-
         _isResizing = true;
         _resizeQuietCancellation?.Cancel();
         var cancellation = new CancellationTokenSource();
@@ -320,33 +303,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        SelectSingleItemForContext(item);
-        _ = Dispatcher.BeginInvoke(() => OpenImageInspectorAsync(item), DispatcherPriority.Background);
+        OpenImageInspector(item);
         e.Handled = true;
-    }
-
-    private void ImageList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not null)
-        {
-            e.Handled = true;
-        }
-    }
-
-    private void ImageList_LostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
-    {
-        if (_isRectangleSelecting && ReferenceEquals(sender, _rectangleList))
-        {
-            ResetRectangleSelectionState();
-        }
-    }
-
-    private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_isRectangleSelecting)
-        {
-            ResetRectangleSelectionState();
-        }
     }
 
     private void ShowSelectedInExplorer_Click(object sender, RoutedEventArgs e)
@@ -413,19 +371,31 @@ public partial class MainWindow : Window
 
     private void SelectByRectangle(System.Windows.Controls.ListBox list, System.Windows.Point start, System.Windows.Point end, bool toggle)
     {
-        var listBounds = new SelectionRectangle(0, 0, list.ActualWidth, list.ActualHeight);
-        var selection = new SelectionRectangle(start.X, start.Y, end.X - start.X, end.Y - start.Y).ClampTo(listBounds);
-        var selected = RectangleSelection.Intersecting(_rectangleSnapshot, selection);
-        if (selected.Count == 0)
+        var selection = new SelectionRectangle(start.X, start.Y, end.X - start.X, end.Y - start.Y);
+        var tiles = new List<SelectionTile<ImageItemViewModel>>();
+        foreach (var item in list.Items.Cast<ImageItemViewModel>())
         {
-            if (!toggle)
+            if (list.ItemContainerGenerator.ContainerFromItem(item) is not ListBoxItem container)
             {
-                list.SelectedItems.Clear();
+                continue;
             }
 
-            return;
+            Rect bounds;
+            try
+            {
+                bounds = container.TransformToAncestor(list).TransformBounds(new Rect(0, 0, container.ActualWidth, container.ActualHeight));
+            }
+            catch (InvalidOperationException)
+            {
+                continue;
+            }
+
+            tiles.Add(new SelectionTile<ImageItemViewModel>(
+                item,
+                new SelectionRectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height)));
         }
 
+        var selected = RectangleSelection.Intersecting(tiles, selection);
         if (!toggle)
         {
             list.SelectedItems.Clear();
@@ -444,70 +414,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private static IReadOnlyList<SelectionTile<ImageItemViewModel>> CaptureSelectionSnapshot(System.Windows.Controls.ListBox list)
-    {
-        var tiles = new List<SelectionTile<ImageItemViewModel>>();
-        foreach (var item in list.Items.OfType<ImageItemViewModel>())
-        {
-            if (list.ItemContainerGenerator.ContainerFromItem(item) is not ListBoxItem container)
-            {
-                continue;
-            }
-
-            if (container.ActualWidth <= 0 || container.ActualHeight <= 0)
-            {
-                continue;
-            }
-
-            Rect bounds;
-            try
-            {
-                bounds = container.TransformToAncestor(list).TransformBounds(new Rect(0, 0, container.ActualWidth, container.ActualHeight));
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
-            {
-                continue;
-            }
-
-            tiles.Add(new SelectionTile<ImageItemViewModel>(
-                item,
-                new SelectionRectangle(bounds.X, bounds.Y, bounds.Width, bounds.Height)));
-        }
-
-        return tiles;
-    }
-
-    private static System.Windows.Point ClampPointToList(System.Windows.Controls.ListBox list, System.Windows.Point point)
-    {
-        var maxX = Math.Max(0, list.ActualWidth);
-        var maxY = Math.Max(0, list.ActualHeight);
-        return new System.Windows.Point(
-            Math.Clamp(point.X, 0, maxX),
-            Math.Clamp(point.Y, 0, maxY));
-    }
-
-    private void SelectSingleItemForContext(ImageItemViewModel item)
-    {
-        var list = BucketList.IsVisible && BucketList.Items.Contains(item)
-            ? BucketList
-            : LibraryList.Items.Contains(item)
-                ? LibraryList
-                : null;
-        if (list is null || list.SelectedItems.Contains(item))
-        {
-            return;
-        }
-
-        list.SelectedItems.Clear();
-        list.SelectedItems.Add(item);
-        list.ScrollIntoView(item);
-    }
-
-    private async Task OpenImageInspectorAsync(ImageItemViewModel item)
+    private void OpenImageInspector(ImageItemViewModel item)
     {
         try
         {
-            var frames = await Task.Run(() => LoadInspectorFrames(item.FullPath));
+            var frames = LoadInspectorFrames(item.FullPath);
             if (frames.Count == 0)
             {
                 ViewModel.ShowWarning("Could not open image preview: no decodable image frames were found.");
@@ -601,7 +512,7 @@ public partial class MainWindow : Window
 
             window.ShowDialog();
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
             ViewModel.ShowWarning($"Could not open image preview: {ex.Message}");
         }

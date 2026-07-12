@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private System.Windows.Point _rectangleStartPoint;
     private System.Windows.Controls.ListBox? _rectangleList;
     private UIElement? _rectangleCaptureElement;
+    private FrameworkElement? _rectangleSurfaceElement;
     private bool _isRectangleSelecting;
     private RubberBandAdorner? _rubberBandAdorner;
     private AdornerLayer? _rubberBandLayer;
@@ -111,7 +112,8 @@ public partial class MainWindow : Window
                 return;
             }
 
-            BeginRectangleSelection(list, _dragStartPoint, list);
+            var surface = SurfaceForList(list);
+            BeginRectangleSelection(list, e.GetPosition(surface), surface, surface);
             e.Handled = true;
         }
     }
@@ -136,20 +138,26 @@ public partial class MainWindow : Window
             ["source"] = e.OriginalSource?.GetType().Name
         });
         list.Focus();
+        var surface = (FrameworkElement)sender;
         _dragStartPoint = e.GetPosition(list);
         _dragSelectionSnapshot = [];
-        BeginRectangleSelection(list, _dragStartPoint, (UIElement)sender);
+        BeginRectangleSelection(list, e.GetPosition(surface), surface, surface);
         e.Handled = true;
     }
 
-    private void BeginRectangleSelection(System.Windows.Controls.ListBox list, System.Windows.Point startPoint, UIElement captureElement)
+    private void BeginRectangleSelection(
+        System.Windows.Controls.ListBox list,
+        System.Windows.Point startPoint,
+        UIElement captureElement,
+        FrameworkElement surfaceElement)
     {
         _rectangleList = list;
         _rectangleCaptureElement = captureElement;
+        _rectangleSurfaceElement = surfaceElement;
         _rectangleStartPoint = startPoint;
         _isRectangleSelecting = true;
-        _rubberBandLayer = AdornerLayer.GetAdornerLayer(list);
-        _rubberBandAdorner = new RubberBandAdorner(list);
+        _rubberBandLayer = AdornerLayer.GetAdornerLayer(surfaceElement);
+        _rubberBandAdorner = new RubberBandAdorner(surfaceElement);
         _rubberBandLayer?.Add(_rubberBandAdorner);
         captureElement.CaptureMouse();
         App.DebugLog.Write("RectangleSelectionStart", ListMode(list), SelectedSummary(list));
@@ -167,11 +175,11 @@ public partial class MainWindow : Window
             ["leftButton"] = e.LeftButton.ToString(),
             ["isRectangleSelecting"] = _isRectangleSelecting.ToString()
         });
-        if (_isRectangleSelecting && _rectangleList is not null)
+        if (_isRectangleSelecting && _rectangleList is not null && _rectangleSurfaceElement is not null)
         {
             try
             {
-                UpdateRubberBand(e.GetPosition(_rectangleList));
+                UpdateRubberBand(e.GetPosition(_rectangleSurfaceElement));
             }
             catch (InvalidOperationException ex)
             {
@@ -217,7 +225,7 @@ public partial class MainWindow : Window
         {
             ["isRectangleSelecting"] = _isRectangleSelecting.ToString()
         });
-        if (!_isRectangleSelecting || _rectangleList is null)
+        if (!_isRectangleSelecting || _rectangleList is null || _rectangleSurfaceElement is null)
         {
             _dragSelectionSnapshot = [];
             return;
@@ -227,7 +235,7 @@ public partial class MainWindow : Window
         System.Windows.Point endPoint;
         try
         {
-            endPoint = e.GetPosition(list);
+            endPoint = e.GetPosition(_rectangleSurfaceElement);
         }
         catch (InvalidOperationException ex)
         {
@@ -244,6 +252,7 @@ public partial class MainWindow : Window
     {
         if (!_isRectangleSelecting ||
             _rectangleList is null ||
+            _rectangleSurfaceElement is null ||
             !ReferenceEquals(sender, _rectangleCaptureElement))
         {
             return;
@@ -251,7 +260,7 @@ public partial class MainWindow : Window
 
         try
         {
-            UpdateRubberBand(e.GetPosition(_rectangleList));
+            UpdateRubberBand(e.GetPosition(_rectangleSurfaceElement));
         }
         catch (InvalidOperationException ex)
         {
@@ -265,6 +274,7 @@ public partial class MainWindow : Window
     {
         if (!_isRectangleSelecting ||
             _rectangleList is null ||
+            _rectangleSurfaceElement is null ||
             !ReferenceEquals(sender, _rectangleCaptureElement))
         {
             return;
@@ -273,7 +283,7 @@ public partial class MainWindow : Window
         System.Windows.Point endPoint;
         try
         {
-            endPoint = e.GetPosition(_rectangleList);
+            endPoint = e.GetPosition(_rectangleSurfaceElement);
         }
         catch (InvalidOperationException ex)
         {
@@ -322,10 +332,16 @@ public partial class MainWindow : Window
     {
         RemoveRubberBand();
         var captureElement = _rectangleCaptureElement;
+        var surface = _rectangleSurfaceElement;
         _isRectangleSelecting = false;
         _rectangleList = null;
         _rectangleCaptureElement = null;
+        _rectangleSurfaceElement = null;
         captureElement?.ReleaseMouseCapture();
+        if (surface is null)
+        {
+            return;
+        }
 
         if (Math.Abs(endPoint.X - _rectangleStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
             Math.Abs(endPoint.Y - _rectangleStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
@@ -335,7 +351,7 @@ public partial class MainWindow : Window
 
         try
         {
-            SelectByRectangle(list, _rectangleStartPoint, endPoint, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+            SelectByRectangle(list, surface, _rectangleStartPoint, endPoint, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
             App.DebugLog.Write("RectangleSelectionEnd", ListMode(list), SelectedSummary(list));
         }
         catch (InvalidOperationException ex)
@@ -357,6 +373,7 @@ public partial class MainWindow : Window
         _rectangleCaptureElement?.ReleaseMouseCapture();
         _rectangleList = null;
         _rectangleCaptureElement = null;
+        _rectangleSurfaceElement = null;
         if (showWarning)
         {
             ViewModel.ShowWarning("Rectangle selection was canceled because the grid layout changed.");
@@ -375,7 +392,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var rectangle = RectangleFromDrag(_rectangleStartPoint, endPoint, _rectangleList);
+        var rectangle = RectangleFromDrag(_rectangleStartPoint, endPoint, _rectangleSurfaceElement);
         if (!rectangle.IsValid)
         {
             _rubberBandAdorner.SelectionBounds = Rect.Empty;
@@ -698,9 +715,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SelectByRectangle(System.Windows.Controls.ListBox list, System.Windows.Point start, System.Windows.Point end, bool toggle)
+    private void SelectByRectangle(System.Windows.Controls.ListBox list, FrameworkElement surface, System.Windows.Point start, System.Windows.Point end, bool toggle)
     {
-        var selection = RectangleFromDrag(start, end, list);
+        var selection = RectangleFromDrag(start, end, surface);
         if (!selection.IsValid)
         {
             return;
@@ -717,7 +734,7 @@ public partial class MainWindow : Window
             Rect bounds;
             try
             {
-                bounds = container.TransformToAncestor(list).TransformBounds(new Rect(0, 0, container.ActualWidth, container.ActualHeight));
+                bounds = container.TransformToAncestor(surface).TransformBounds(new Rect(0, 0, container.ActualWidth, container.ActualHeight));
             }
             catch (InvalidOperationException)
             {
@@ -894,6 +911,11 @@ public partial class MainWindow : Window
     private static string ListMode(object? sender)
     {
         return sender is System.Windows.Controls.ListBox { Name: "BucketList" } ? "Bucket" : "Library";
+    }
+
+    private FrameworkElement SurfaceForList(System.Windows.Controls.ListBox list)
+    {
+        return ReferenceEquals(list, BucketList) ? BucketImageSurface : LibraryImageSurface;
     }
 
     private string SelectedSummary()

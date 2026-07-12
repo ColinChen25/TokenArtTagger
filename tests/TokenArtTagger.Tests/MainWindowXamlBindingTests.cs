@@ -90,6 +90,25 @@ public class MainWindowXamlBindingTests
     }
 
     [TestMethod]
+    public void ImageViewportLabelsFloatInsideSharedSelectionSurface()
+    {
+        var xaml = ReadMainWindowXaml();
+        var codeBehind = ReadMainWindowCodeBehind();
+
+        StringAssert.Contains(xaml, "IsHitTestVisible=\"False\"");
+        StringAssert.Contains(xaml, "Panel.ZIndex=\"1\"");
+        Assert.AreEqual(2, CountOccurrences(xaml, "Margin=\"0,28,0,0\""));
+        Assert.IsFalse(
+            xaml.Contains("DockPanel.Dock=\"Top\" Text=\"Current Page\"", StringComparison.Ordinal),
+            "Current Page should float inside the shared selection surface, not live in a separate DockPanel row.");
+        StringAssert.Contains(codeBehind, "AdornerLayer.GetAdornerLayer(surfaceElement)");
+        StringAssert.Contains(codeBehind, "TransformToAncestor(surface)");
+        Assert.IsFalse(
+            codeBehind.Contains("AdornerLayer.GetAdornerLayer(list)", StringComparison.Ordinal),
+            "The rubber-band adorner must be attached to the full image surface, not clipped to the inner list.");
+    }
+
+    [TestMethod]
     public void BucketShortcutHintsStayInBucketMode()
     {
         var xaml = ReadMainWindowXaml();
@@ -102,6 +121,11 @@ public class MainWindowXamlBindingTests
     private static string ReadMainWindowXaml()
     {
         return File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "TokenArtTagger.App", "MainWindow.xaml"));
+    }
+
+    private static string ReadMainWindowCodeBehind()
+    {
+        return File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "TokenArtTagger.App", "MainWindow.xaml.cs"));
     }
 
     private static int CountOccurrences(string text, string value)

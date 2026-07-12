@@ -97,15 +97,69 @@ public class MainWindowXamlBindingTests
 
         StringAssert.Contains(xaml, "IsHitTestVisible=\"False\"");
         StringAssert.Contains(xaml, "Panel.ZIndex=\"1\"");
-        Assert.AreEqual(2, CountOccurrences(xaml, "Margin=\"0,28,0,0\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "Margin=\"10,38,10,10\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "Margin=\"10,10,0,0\""));
         Assert.IsFalse(
             xaml.Contains("DockPanel.Dock=\"Top\" Text=\"Current Page\"", StringComparison.Ordinal),
             "Current Page should float inside the shared selection surface, not live in a separate DockPanel row.");
-        StringAssert.Contains(codeBehind, "AdornerLayer.GetAdornerLayer(surfaceElement)");
+        StringAssert.Contains(codeBehind, "RubberBandForSurface(surfaceElement)");
         StringAssert.Contains(codeBehind, "TransformToAncestor(surface)");
         Assert.IsFalse(
-            codeBehind.Contains("AdornerLayer.GetAdornerLayer(list)", StringComparison.Ordinal),
-            "The rubber-band adorner must be attached to the full image surface, not clipped to the inner list.");
+            codeBehind.Contains("RectangleFromDrag(_rectangleStartPoint, endPoint, _rectangleList)", StringComparison.Ordinal),
+            "The rubber-band rectangle must be measured against the full image surface, not the inner list.");
+    }
+
+    [TestMethod]
+    public void SelectionSurfacesOwnOuterPanelPadding()
+    {
+        var xaml = ReadMainWindowXaml();
+
+        Assert.IsFalse(
+            xaml.Contains("x:Name=\"LibraryImageSurface\" Grid.Column=\"1\" Margin=\"12,0\" Background=\"#FFFFFF\" BorderBrush=\"#D7D3CA\" BorderThickness=\"1\" CornerRadius=\"6\" Padding=\"10\"", StringComparison.Ordinal),
+            "Library selection surface should start at the rounded panel origin; padding belongs inside the selectable root surface.");
+        Assert.IsFalse(
+            xaml.Contains("x:Name=\"BucketImageSurface\" Grid.Column=\"1\" Margin=\"12,0\" Background=\"#FFFFFF\" BorderBrush=\"#D7D3CA\" BorderThickness=\"1\" CornerRadius=\"6\" Padding=\"10\"", StringComparison.Ordinal),
+            "Bucket selection surface should start at the rounded panel origin; padding belongs inside the selectable root surface.");
+        StringAssert.Contains(xaml, "<Border x:Name=\"LibraryImageSurface\" Grid.Column=\"1\" Margin=\"12,0\" Background=\"#FFFFFF\" BorderBrush=\"#D7D3CA\" BorderThickness=\"1\" CornerRadius=\"6\">");
+        StringAssert.Contains(xaml, "<Border x:Name=\"BucketImageSurface\" Grid.Column=\"1\" Margin=\"12,0\" Background=\"#FFFFFF\" BorderBrush=\"#D7D3CA\" BorderThickness=\"1\" CornerRadius=\"6\">");
+    }
+
+    [TestMethod]
+    public void CurrentPageRootGridsContainNonInteractiveRubberBandOverlay()
+    {
+        var xaml = ReadMainWindowXaml();
+        var codeBehind = ReadMainWindowCodeBehind();
+
+        StringAssert.Contains(xaml, "<Canvas x:Name=\"LibrarySelectionOverlay\"");
+        StringAssert.Contains(xaml, "<Canvas x:Name=\"BucketSelectionOverlay\"");
+        StringAssert.Contains(xaml, "x:Name=\"LibraryRubberBand\"");
+        StringAssert.Contains(xaml, "x:Name=\"BucketRubberBand\"");
+        StringAssert.Contains(xaml, "IsHitTestVisible=\"False\" Panel.ZIndex=\"1\"");
+        StringAssert.Contains(xaml, "Visibility=\"Collapsed\" Fill=\"#2AB42318\" Stroke=\"#B42318\"");
+        StringAssert.Contains(codeBehind, "Canvas.SetLeft(_rubberBandRectangle");
+        StringAssert.Contains(codeBehind, "_rubberBandRectangle.Visibility = Visibility.Visible");
+        Assert.IsFalse(
+            codeBehind.Contains("RubberBandAdorner", StringComparison.Ordinal),
+            "Rectangle selection should draw inside the shared root surface instead of using an adorner layer that can drift from the input surface.");
+    }
+
+    [TestMethod]
+    public void CurrentPageRootGridsOwnRectangleSelectionInput()
+    {
+        var xaml = ReadMainWindowXaml();
+        var codeBehind = ReadMainWindowCodeBehind();
+
+        StringAssert.Contains(xaml, "<Grid x:Name=\"LibrarySelectionSurface\" Background=\"Transparent\" ClipToBounds=\"False\"");
+        StringAssert.Contains(xaml, "<Grid x:Name=\"BucketSelectionSurface\" Background=\"Transparent\" ClipToBounds=\"False\"");
+        Assert.AreEqual(2, CountOccurrences(xaml, "PreviewMouseLeftButtonDown=\"ImageSurface_PreviewMouseLeftButtonDown\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "PreviewMouseLeftButtonUp=\"ImageSurface_PreviewMouseLeftButtonUp\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "MouseMove=\"ImageSurface_MouseMove\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "LostMouseCapture=\"ImageSurface_LostMouseCapture\""));
+        StringAssert.Contains(codeBehind, "ReferenceEquals(surface, BucketSelectionSurface)");
+        StringAssert.Contains(codeBehind, "return ReferenceEquals(list, BucketList) ? BucketSelectionSurface : LibrarySelectionSurface;");
+        Assert.IsFalse(
+            codeBehind.Contains("ReferenceEquals(sender, BucketImageSurface)", StringComparison.Ordinal),
+            "Header-space mouse-down should be handled by the shared root grid, not the decorative outer border.");
     }
 
     [TestMethod]

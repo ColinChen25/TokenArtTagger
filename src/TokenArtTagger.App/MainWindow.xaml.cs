@@ -3,13 +3,13 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using TokenArtTagger.Core;
 using TokenArtTagger.App.ViewModels;
+using ShapeRectangle = System.Windows.Shapes.Rectangle;
 
 namespace TokenArtTagger.App;
 
@@ -23,8 +23,7 @@ public partial class MainWindow : Window
     private UIElement? _rectangleCaptureElement;
     private FrameworkElement? _rectangleSurfaceElement;
     private bool _isRectangleSelecting;
-    private RubberBandAdorner? _rubberBandAdorner;
-    private AdornerLayer? _rubberBandLayer;
+    private ShapeRectangle? _rubberBandRectangle;
     private System.Windows.Point? _inspectorPanStart;
     private double _inspectorPanStartX;
     private double _inspectorPanStartY;
@@ -120,28 +119,37 @@ public partial class MainWindow : Window
 
     private void ImageSurface_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.Handled)
+        if (sender is not FrameworkElement surface)
         {
             return;
         }
 
+        var list = ReferenceEquals(surface, BucketSelectionSurface) ? BucketList : LibraryList;
         var source = e.OriginalSource as DependencyObject;
-        if (FindAncestor<System.Windows.Controls.ListBox>(source) is not null ||
-            IsFromInteractiveControl(source))
+        var point = e.GetPosition(surface);
+        var rejectedReason = e.Handled ? "already handled" : SelectionSurfaceRejectionReason(source);
+        App.DebugLog.Write("SelectionSurface.MouseDown", ListMode(list), SelectedSummary(list), new Dictionary<string, string?>
+        {
+            ["accepted"] = (rejectedReason is null).ToString(),
+            ["reason"] = rejectedReason,
+            ["source"] = e.OriginalSource?.GetType().Name,
+            ["x"] = point.X.ToString("F0"),
+            ["y"] = point.Y.ToString("F0")
+        });
+
+        if (rejectedReason is not null)
         {
             return;
         }
 
-        var list = ReferenceEquals(sender, BucketImageSurface) ? BucketList : LibraryList;
         using var logScope = App.DebugLog.Enter("ImageSurfacePreviewMouseLeftButtonDown", ListMode(list), SelectedSummary(list), new Dictionary<string, string?>
         {
             ["source"] = e.OriginalSource?.GetType().Name
         });
         list.Focus();
-        var surface = (FrameworkElement)sender;
         _dragStartPoint = e.GetPosition(list);
         _dragSelectionSnapshot = [];
-        BeginRectangleSelection(list, e.GetPosition(surface), surface, surface);
+        BeginRectangleSelection(list, point, surface, surface);
         e.Handled = true;
     }
 
@@ -156,10 +164,16 @@ public partial class MainWindow : Window
         _rectangleSurfaceElement = surfaceElement;
         _rectangleStartPoint = startPoint;
         _isRectangleSelecting = true;
-        _rubberBandLayer = AdornerLayer.GetAdornerLayer(surfaceElement);
-        _rubberBandAdorner = new RubberBandAdorner(surfaceElement);
-        _rubberBandLayer?.Add(_rubberBandAdorner);
-        captureElement.CaptureMouse();
+        _rubberBandRectangle = RubberBandForSurface(surfaceElement);
+        HideRubberBand(_rubberBandRectangle);
+        var captured = captureElement.CaptureMouse();
+        App.DebugLog.Write("RectangleSelection.Start", ListMode(list), SelectedSummary(list), new Dictionary<string, string?>
+        {
+            ["captured"] = captured.ToString(),
+            ["surface"] = surfaceElement.Name,
+            ["x"] = startPoint.X.ToString("F0"),
+            ["y"] = startPoint.Y.ToString("F0")
+        });
         App.DebugLog.Write("RectangleSelectionStart", ListMode(list), SelectedSummary(list));
     }
 
@@ -352,6 +366,13 @@ public partial class MainWindow : Window
         try
         {
             SelectByRectangle(list, surface, _rectangleStartPoint, endPoint, Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+            App.DebugLog.Write("RectangleSelection.End", ListMode(list), SelectedSummary(list), new Dictionary<string, string?>
+            {
+                ["endX"] = endPoint.X.ToString("F0"),
+                ["endY"] = endPoint.Y.ToString("F0"),
+                ["startX"] = _rectangleStartPoint.X.ToString("F0"),
+                ["startY"] = _rectangleStartPoint.Y.ToString("F0")
+            });
             App.DebugLog.Write("RectangleSelectionEnd", ListMode(list), SelectedSummary(list));
         }
         catch (InvalidOperationException ex)
@@ -387,7 +408,7 @@ public partial class MainWindow : Window
 
     private void UpdateRubberBand(System.Windows.Point endPoint)
     {
-        if (_rubberBandAdorner is null)
+        if (_rubberBandRectangle is null)
         {
             return;
         }
@@ -395,26 +416,41 @@ public partial class MainWindow : Window
         var rectangle = RectangleFromDrag(_rectangleStartPoint, endPoint, _rectangleSurfaceElement);
         if (!rectangle.IsValid)
         {
-            _rubberBandAdorner.SelectionBounds = Rect.Empty;
-            _rubberBandAdorner.InvalidateVisual();
+            _rubberBandRectangle.Visibility = Visibility.Collapsed;
             return;
         }
 
-        _rubberBandAdorner.SelectionBounds = new Rect(
-            new System.Windows.Point(rectangle.Left, rectangle.Top),
-            new System.Windows.Point(rectangle.Right, rectangle.Bottom));
-        _rubberBandAdorner.InvalidateVisual();
+        Canvas.SetLeft(_rubberBandRectangle, rectangle.Left);
+        Canvas.SetTop(_rubberBandRectangle, rectangle.Top);
+        _rubberBandRectangle.Width = rectangle.Right - rectangle.Left;
+        _rubberBandRectangle.Height = rectangle.Bottom - rectangle.Top;
+        _rubberBandRectangle.Visibility = Visibility.Visible;
+        App.DebugLog.Write("RectangleSelection.Update", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
+        {
+            ["height"] = _rubberBandRectangle.Height.ToString("F0"),
+            ["left"] = rectangle.Left.ToString("F0"),
+            ["top"] = rectangle.Top.ToString("F0"),
+            ["width"] = _rubberBandRectangle.Width.ToString("F0")
+        });
     }
 
     private void RemoveRubberBand()
     {
-        if (_rubberBandLayer is not null && _rubberBandAdorner is not null)
+        HideRubberBand(_rubberBandRectangle);
+
+        _rubberBandRectangle = null;
+    }
+
+    private static void HideRubberBand(ShapeRectangle? rectangle)
+    {
+        if (rectangle is null)
         {
-            _rubberBandLayer.Remove(_rubberBandAdorner);
+            return;
         }
 
-        _rubberBandLayer = null;
-        _rubberBandAdorner = null;
+        rectangle.Visibility = Visibility.Collapsed;
+        rectangle.Width = 0;
+        rectangle.Height = 0;
     }
 
     private void LibraryList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -915,7 +951,12 @@ public partial class MainWindow : Window
 
     private FrameworkElement SurfaceForList(System.Windows.Controls.ListBox list)
     {
-        return ReferenceEquals(list, BucketList) ? BucketImageSurface : LibraryImageSurface;
+        return ReferenceEquals(list, BucketList) ? BucketSelectionSurface : LibrarySelectionSurface;
+    }
+
+    private ShapeRectangle RubberBandForSurface(FrameworkElement surface)
+    {
+        return ReferenceEquals(surface, BucketSelectionSurface) ? BucketRubberBand : LibraryRubberBand;
     }
 
     private string SelectedSummary()
@@ -962,11 +1003,26 @@ public partial class MainWindow : Window
         return FindAncestor<System.Windows.Controls.Primitives.ScrollBar>(source) is not null;
     }
 
-    private static bool IsFromInteractiveControl(DependencyObject? source)
+    private static string? SelectionSurfaceRejectionReason(DependencyObject? source)
+    {
+        if (FindAncestor<ListBoxItem>(source) is not null)
+        {
+            return "card";
+        }
+
+        if (IsFromScrollBar(source))
+        {
+            return "scrollbar";
+        }
+
+        return IsFromSelectionSurfaceBlockingControl(source) ? "control" : null;
+    }
+
+    private static bool IsFromSelectionSurfaceBlockingControl(DependencyObject? source)
     {
         return FindAncestor<System.Windows.Controls.Primitives.ButtonBase>(source) is not null ||
             FindAncestor<System.Windows.Controls.Primitives.TextBoxBase>(source) is not null ||
-            FindAncestor<System.Windows.Controls.Primitives.Selector>(source) is not null ||
+            FindAncestor<System.Windows.Controls.ComboBox>(source) is not null ||
             FindAncestor<System.Windows.Controls.Primitives.ScrollBar>(source) is not null;
     }
 
@@ -1000,30 +1056,5 @@ public partial class MainWindow : Window
         }
 
         return null;
-    }
-}
-
-internal sealed class RubberBandAdorner : Adorner
-{
-    private static readonly SolidColorBrush Fill = new(System.Windows.Media.Color.FromArgb(42, 180, 35, 24));
-    private static readonly System.Windows.Media.Pen Stroke = new(new SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 35, 24)), 1.5);
-
-    public RubberBandAdorner(UIElement adornedElement)
-        : base(adornedElement)
-    {
-        IsHitTestVisible = false;
-    }
-
-    public Rect SelectionBounds { get; set; }
-
-    protected override void OnRender(DrawingContext drawingContext)
-    {
-        base.OnRender(drawingContext);
-        if (SelectionBounds.Width == 0 && SelectionBounds.Height == 0)
-        {
-            return;
-        }
-
-        drawingContext.DrawRectangle(Fill, Stroke, SelectionBounds);
     }
 }

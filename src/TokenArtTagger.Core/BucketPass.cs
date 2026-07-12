@@ -41,14 +41,24 @@ public sealed record BucketPassDefinition(
                 "Role",
                 TagSchema.RoleCategory,
                 TagSchema.Roles.Select(value => new BucketDefinition(TagSchema.RoleCategory, value, value)).ToList()),
-            BucketPass.MeleeStyle => StyleDefinition(pass, "Melee Weapon/Style", "melee", TagSchema.MeleeStyles),
-            BucketPass.RangeStyle => StyleDefinition(pass, "Range Weapon/Style", "range", TagSchema.RangeStyles),
+            BucketPass.MeleeStyle => StyleDefinition(
+                pass,
+                "Melee Weapon/Style",
+                "melee",
+                ["blade", "polearm", "dagger", "unarmed", "axe", "mace", "whip", "flail", "scythe", "blunt", "thrown", "exotic"]),
+            BucketPass.RangeStyle => StyleDefinition(
+                pass,
+                "Range Weapon/Style",
+                "range",
+                ["bow", "crossbow", "gun", "thrown", "polearm", "dagger", "axe", "exotic"]),
             BucketPass.CasterStyle => StyleDefinition(pass, "Caster Style", "caster", TagSchema.CasterStyles),
             BucketPass.Race => new BucketPassDefinition(
                 pass,
                 "Race",
                 TagSchema.RaceCategory,
-                TagSchema.Races.Select(value => new BucketDefinition(TagSchema.RaceCategory, value, value)).ToList()),
+                OrderedValues(
+                    ["human", "elf", "beastfolk", "dragon"],
+                    TagSchema.Races).Select(value => new BucketDefinition(TagSchema.RaceCategory, value, value)).ToList()),
             _ => throw new ArgumentOutOfRangeException(nameof(pass), pass, null)
         };
     }
@@ -64,5 +74,12 @@ public sealed record BucketPassDefinition(
             displayName,
             TagSchema.StyleCategory,
             styles.Select(value => new BucketDefinition(TagSchema.StyleCategory, value, value)).ToList());
+    }
+
+    private static IReadOnlyList<string> OrderedValues(IReadOnlyList<string> firstValues, IReadOnlyList<string> allValues)
+    {
+        return firstValues
+            .Concat(allValues.Where(value => !firstValues.Contains(value, StringComparer.OrdinalIgnoreCase)))
+            .ToList();
     }
 }

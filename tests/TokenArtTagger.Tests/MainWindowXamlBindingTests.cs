@@ -82,7 +82,21 @@ public class MainWindowXamlBindingTests
         StringAssert.Contains(xaml, "x:Name=\"LibraryImageSurface\"");
         StringAssert.Contains(xaml, "x:Name=\"BucketImageSurface\"");
         Assert.AreEqual(2, CountOccurrences(xaml, "PreviewMouseLeftButtonDown=\"ImageSurface_PreviewMouseLeftButtonDown\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "PreviewMouseLeftButtonUp=\"ImageSurface_PreviewMouseLeftButtonUp\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "MouseMove=\"ImageSurface_MouseMove\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "MouseLeave=\"ImageSurface_MouseLeave\""));
+        Assert.AreEqual(2, CountOccurrences(xaml, "LostMouseCapture=\"ImageSurface_LostMouseCapture\""));
         StringAssert.Contains(xaml, "Background=\"Transparent\"");
+    }
+
+    [TestMethod]
+    public void BucketShortcutHintsStayInBucketMode()
+    {
+        var xaml = ReadMainWindowXaml();
+
+        StringAssert.Contains(xaml, "Text=\"{Binding BucketShortcutHintText}\"");
+        StringAssert.Contains(xaml, "Text=\"{Binding ButtonLabel}\"");
+        Assert.AreEqual(1, CountOccurrences(xaml, "BucketShortcutHintText"));
     }
 
     private static string ReadMainWindowXaml()

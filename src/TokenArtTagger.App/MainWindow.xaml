@@ -322,15 +322,15 @@
                         </DockPanel>
                     </Border>
 
-                    <Border x:Name="LibraryImageSurface" Grid.Column="1" Margin="12,0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="10"
-                            PreviewMouseLeftButtonDown="ImageSurface_PreviewMouseLeftButtonDown"
-                            PreviewMouseLeftButtonUp="ImageSurface_PreviewMouseLeftButtonUp"
-                            MouseMove="ImageSurface_MouseMove"
-                            MouseLeave="ImageSurface_MouseLeave"
-                            LostMouseCapture="ImageSurface_LostMouseCapture">
-                        <Grid Background="Transparent" ClipToBounds="False">
+                    <Border x:Name="LibraryImageSurface" Grid.Column="1" Margin="12,0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6">
+                        <Grid x:Name="LibrarySelectionSurface" Background="Transparent" ClipToBounds="False"
+                              PreviewMouseLeftButtonDown="ImageSurface_PreviewMouseLeftButtonDown"
+                              PreviewMouseLeftButtonUp="ImageSurface_PreviewMouseLeftButtonUp"
+                              MouseMove="ImageSurface_MouseMove"
+                              MouseLeave="ImageSurface_MouseLeave"
+                              LostMouseCapture="ImageSurface_LostMouseCapture">
                             <ListBox x:Name="LibraryList"
-                                     Margin="0,28,0,0"
+                                     Margin="10,38,10,10"
                                      ItemsSource="{Binding ItemsView}"
                                      SelectionMode="Extended"
                                      BorderThickness="0"
@@ -356,10 +356,16 @@
                                     <StaticResource ResourceKey="ImageTileTemplate" />
                                 </ListBox.ItemTemplate>
                             </ListBox>
+                            <Canvas x:Name="LibrarySelectionOverlay" IsHitTestVisible="False" Panel.ZIndex="1">
+                                <Rectangle x:Name="LibraryRubberBand"
+                                           Visibility="Collapsed" Fill="#2AB42318" Stroke="#B42318"
+                                           StrokeThickness="1.5" />
+                            </Canvas>
                             <TextBlock Text="Images"
                                        Style="{StaticResource PanelTitle}"
+                                       Margin="10,10,0,0"
                                        IsHitTestVisible="False"
-                                       Panel.ZIndex="1"
+                                       Panel.ZIndex="2"
                                        VerticalAlignment="Top"
                                        HorizontalAlignment="Left" />
                         </Grid>
@@ -446,15 +452,15 @@
                             </DockPanel>
                         </Border>
 
-                        <Border x:Name="BucketImageSurface" Grid.Column="1" Margin="12,0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="10"
-                                PreviewMouseLeftButtonDown="ImageSurface_PreviewMouseLeftButtonDown"
-                                PreviewMouseLeftButtonUp="ImageSurface_PreviewMouseLeftButtonUp"
-                                MouseMove="ImageSurface_MouseMove"
-                                MouseLeave="ImageSurface_MouseLeave"
-                                LostMouseCapture="ImageSurface_LostMouseCapture">
-                            <Grid Background="Transparent" ClipToBounds="False">
+                        <Border x:Name="BucketImageSurface" Grid.Column="1" Margin="12,0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6">
+                            <Grid x:Name="BucketSelectionSurface" Background="Transparent" ClipToBounds="False"
+                                  PreviewMouseLeftButtonDown="ImageSurface_PreviewMouseLeftButtonDown"
+                                  PreviewMouseLeftButtonUp="ImageSurface_PreviewMouseLeftButtonUp"
+                                  MouseMove="ImageSurface_MouseMove"
+                                  MouseLeave="ImageSurface_MouseLeave"
+                                  LostMouseCapture="ImageSurface_LostMouseCapture">
                                 <ListBox x:Name="BucketList"
-                                         Margin="0,28,0,0"
+                                         Margin="10,38,10,10"
                                          ItemsSource="{Binding BucketPageItems}"
                                          SelectionMode="Extended"
                                          BorderThickness="0"
@@ -480,10 +486,16 @@
                                         <StaticResource ResourceKey="ImageTileTemplate" />
                                     </ListBox.ItemTemplate>
                                 </ListBox>
+                                <Canvas x:Name="BucketSelectionOverlay" IsHitTestVisible="False" Panel.ZIndex="1">
+                                    <Rectangle x:Name="BucketRubberBand"
+                                               Visibility="Collapsed" Fill="#2AB42318" Stroke="#B42318"
+                                               StrokeThickness="1.5" />
+                                </Canvas>
                                 <TextBlock Text="Current Page"
                                            Style="{StaticResource PanelTitle}"
+                                           Margin="10,10,0,0"
                                            IsHitTestVisible="False"
-                                           Panel.ZIndex="1"
+                                           Panel.ZIndex="2"
                                            VerticalAlignment="Top"
                                            HorizontalAlignment="Left" />
                             </Grid>

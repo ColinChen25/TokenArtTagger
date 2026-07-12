@@ -126,6 +126,8 @@ public sealed class MainViewModel : ViewModelBase
 
     public string BucketWorkingSetSummary => BuildBucketWorkingSetSummary();
 
+    public string BucketShortcutHintText => BuildBucketShortcutHintText();
+
     public string BucketPageText => BucketPageCount == 0
         ? "Page 0 of 0"
         : $"Page {BucketPageIndex + 1} of {BucketPageCount}";
@@ -539,6 +541,28 @@ public sealed class MainViewModel : ViewModelBase
         UpdateAfterTagsChanged();
     }
 
+    public bool ApplyBucketShortcut(int key)
+    {
+        var shortcut = BucketShortcutMap.ForKey(SelectedBucketPass.Pass, key);
+        if (shortcut is null)
+        {
+            SetStatus($"No shortcut {key} for {SelectedBucketPass.DisplayName}.");
+            return false;
+        }
+
+        var bucket = BucketBuckets.FirstOrDefault(candidate =>
+            string.Equals(candidate.Category, shortcut.Value.Category, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(candidate.Value, shortcut.Value.Value, StringComparison.OrdinalIgnoreCase));
+        if (bucket is null)
+        {
+            SetStatus($"Shortcut {key} is not available for the current pass.", isWarning: true);
+            return false;
+        }
+
+        ApplyBucket(bucket);
+        return true;
+    }
+
     private void ApplyDefaultToCurrentPage()
     {
         if (SelectedDefaultBucketValue is null || BucketPageItems.Count == 0)
@@ -702,10 +726,12 @@ public sealed class MainViewModel : ViewModelBase
         var definition = BucketPassDefinition.For(SelectedBucketPass.Pass);
         foreach (var bucket in definition.Buckets)
         {
-            BucketBuckets.Add(new BucketDefinitionViewModel(bucket.Category, bucket.Value, bucket.Label));
+            var shortcutKey = BucketShortcutMap.KeyFor(SelectedBucketPass.Pass, bucket.Category, bucket.Value);
+            BucketBuckets.Add(new BucketDefinitionViewModel(bucket.Category, bucket.Value, bucket.Label, shortcutKey));
         }
 
         SelectedDefaultBucketValue = BucketBuckets.FirstOrDefault()?.Value;
+        OnPropertyChanged(nameof(BucketShortcutHintText));
     }
 
     private void RebuildBucketWorkingSession()
@@ -1006,6 +1032,14 @@ public sealed class MainViewModel : ViewModelBase
             $"{Environment.NewLine}Ready to rename: {_bucketWorkingSession.ReadyToRenameCount(allItems)}";
     }
 
+    private string BuildBucketShortcutHintText()
+    {
+        var shortcuts = BucketShortcutMap.ForPass(SelectedBucketPass.Pass);
+        return shortcuts.Count == 0
+            ? string.Empty
+            : $"Shortcuts: {string.Join(", ", shortcuts.Select(shortcut => $"{shortcut.Key} {shortcut.Value}"))}";
+    }
+
     private void NotifyLibrarySelectionDetailsChanged()
     {
         using (DebugLog?.Enter("SelectedItemDetailsUpdate", "Library", SelectionSummary()))
@@ -1130,7 +1164,10 @@ public sealed record BucketPassOptionViewModel(BucketPass Pass, string DisplayNa
     public override string ToString() => DisplayName;
 }
 
-public sealed record BucketDefinitionViewModel(string Category, string Value, string Label);
+public sealed record BucketDefinitionViewModel(string Category, string Value, string Label, int? ShortcutKey = null)
+{
+    public string ButtonLabel => ShortcutKey is null ? Label : $"[{ShortcutKey}] {Label}";
+}
 
 public sealed record TagButtonGroupViewModel(string Name, IReadOnlyList<TagButtonViewModel> Buttons);
 

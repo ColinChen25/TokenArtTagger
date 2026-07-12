@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private IReadOnlyList<ImageItemViewModel> _dragSelectionSnapshot = [];
     private System.Windows.Point _rectangleStartPoint;
     private System.Windows.Controls.ListBox? _rectangleList;
+    private UIElement? _rectangleCaptureElement;
     private bool _isRectangleSelecting;
     private RubberBandAdorner? _rubberBandAdorner;
     private AdornerLayer? _rubberBandLayer;
@@ -110,7 +111,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            BeginRectangleSelection(list, _dragStartPoint);
+            BeginRectangleSelection(list, _dragStartPoint, list);
             e.Handled = true;
         }
     }
@@ -137,19 +138,20 @@ public partial class MainWindow : Window
         list.Focus();
         _dragStartPoint = e.GetPosition(list);
         _dragSelectionSnapshot = [];
-        BeginRectangleSelection(list, _dragStartPoint);
+        BeginRectangleSelection(list, _dragStartPoint, (UIElement)sender);
         e.Handled = true;
     }
 
-    private void BeginRectangleSelection(System.Windows.Controls.ListBox list, System.Windows.Point startPoint)
+    private void BeginRectangleSelection(System.Windows.Controls.ListBox list, System.Windows.Point startPoint, UIElement captureElement)
     {
         _rectangleList = list;
+        _rectangleCaptureElement = captureElement;
         _rectangleStartPoint = startPoint;
         _isRectangleSelecting = true;
         _rubberBandLayer = AdornerLayer.GetAdornerLayer(list);
         _rubberBandAdorner = new RubberBandAdorner(list);
         _rubberBandLayer?.Add(_rubberBandAdorner);
-        list.CaptureMouse();
+        captureElement.CaptureMouse();
         App.DebugLog.Write("RectangleSelectionStart", ListMode(list), SelectedSummary(list));
     }
 
@@ -234,15 +236,100 @@ public partial class MainWindow : Window
             return;
         }
 
+        EndRectangleSelection(list, endPoint);
+        e.Handled = true;
+    }
+
+    private void ImageSurface_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!_isRectangleSelecting ||
+            _rectangleList is null ||
+            !ReferenceEquals(sender, _rectangleCaptureElement))
+        {
+            return;
+        }
+
+        try
+        {
+            UpdateRubberBand(e.GetPosition(_rectangleList));
+        }
+        catch (InvalidOperationException ex)
+        {
+            CancelRectangleSelection("grid layout changed", ex, showWarning: true);
+        }
+
+        e.Handled = true;
+    }
+
+    private void ImageSurface_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isRectangleSelecting ||
+            _rectangleList is null ||
+            !ReferenceEquals(sender, _rectangleCaptureElement))
+        {
+            return;
+        }
+
+        System.Windows.Point endPoint;
+        try
+        {
+            endPoint = e.GetPosition(_rectangleList);
+        }
+        catch (InvalidOperationException ex)
+        {
+            CancelRectangleSelection("grid layout changed", ex, showWarning: true);
+            e.Handled = true;
+            return;
+        }
+
+        EndRectangleSelection(_rectangleList, endPoint);
+        e.Handled = true;
+    }
+
+    private void ImageSurface_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_isRectangleSelecting && ReferenceEquals(sender, _rectangleCaptureElement))
+        {
+            CancelRectangleSelection("pointer left image surface");
+        }
+    }
+
+    private void ImageList_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_isRectangleSelecting && ReferenceEquals(sender, _rectangleCaptureElement))
+        {
+            CancelRectangleSelection("pointer left grid");
+        }
+    }
+
+    private void ImageList_LostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_isRectangleSelecting && ReferenceEquals(sender, _rectangleCaptureElement))
+        {
+            CancelRectangleSelection("mouse capture lost");
+        }
+    }
+
+    private void ImageSurface_LostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_isRectangleSelecting && ReferenceEquals(sender, _rectangleCaptureElement))
+        {
+            CancelRectangleSelection("mouse capture lost");
+        }
+    }
+
+    private void EndRectangleSelection(System.Windows.Controls.ListBox list, System.Windows.Point endPoint)
+    {
         RemoveRubberBand();
+        var captureElement = _rectangleCaptureElement;
         _isRectangleSelecting = false;
         _rectangleList = null;
-        list.ReleaseMouseCapture();
+        _rectangleCaptureElement = null;
+        captureElement?.ReleaseMouseCapture();
 
         if (Math.Abs(endPoint.X - _rectangleStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
             Math.Abs(endPoint.Y - _rectangleStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
         {
-            e.Handled = true;
             return;
         }
 
@@ -256,24 +343,6 @@ public partial class MainWindow : Window
             ViewModel.ShowWarning("Rectangle selection was skipped because the grid changed while selecting.");
             _ = CrashLogService.WriteCrashLogAsync(ex);
         }
-
-        e.Handled = true;
-    }
-
-    private void ImageList_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
-    {
-        if (_isRectangleSelecting && ReferenceEquals(sender, _rectangleList))
-        {
-            CancelRectangleSelection("pointer left grid");
-        }
-    }
-
-    private void ImageList_LostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
-    {
-        if (_isRectangleSelecting && ReferenceEquals(sender, _rectangleList))
-        {
-            CancelRectangleSelection("mouse capture lost");
-        }
     }
 
     private void CancelRectangleSelection(string reason, Exception? exception = null, bool showWarning = false)
@@ -285,8 +354,9 @@ public partial class MainWindow : Window
         });
         RemoveRubberBand();
         _isRectangleSelecting = false;
-        _rectangleList?.ReleaseMouseCapture();
+        _rectangleCaptureElement?.ReleaseMouseCapture();
         _rectangleList = null;
+        _rectangleCaptureElement = null;
         if (showWarning)
         {
             ViewModel.ShowWarning("Rectangle selection was canceled because the grid layout changed.");
@@ -361,9 +431,22 @@ public partial class MainWindow : Window
             ["key"] = e.Key.ToString(),
             ["modifiers"] = Keyboard.Modifiers.ToString()
         });
+        if (Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox)
+        {
+            return;
+        }
+
+        if (BucketList.IsVisible &&
+            Keyboard.Modifiers == ModifierKeys.None &&
+            KeyToDigit(e.Key) is { } digit)
+        {
+            ViewModel.ApplyBucketShortcut(digit);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != Key.A ||
-            !Keyboard.Modifiers.HasFlag(ModifierKeys.Control) ||
-            Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox)
+            !Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
             return;
         }
@@ -372,6 +455,23 @@ public partial class MainWindow : Window
         list.Focus();
         list.SelectAll();
         e.Handled = true;
+    }
+
+    private static int? KeyToDigit(Key key)
+    {
+        return key switch
+        {
+            Key.D1 or Key.NumPad1 => 1,
+            Key.D2 or Key.NumPad2 => 2,
+            Key.D3 or Key.NumPad3 => 3,
+            Key.D4 or Key.NumPad4 => 4,
+            Key.D5 or Key.NumPad5 => 5,
+            Key.D6 or Key.NumPad6 => 6,
+            Key.D7 or Key.NumPad7 => 7,
+            Key.D8 or Key.NumPad8 => 8,
+            Key.D9 or Key.NumPad9 => 9,
+            _ => null
+        };
     }
 
     private async void ThumbnailImage_Loaded(object sender, RoutedEventArgs e)

@@ -50,10 +50,13 @@ public class MainWindowXamlBindingTests
         var xaml = ReadMainWindowXaml();
 
         StringAssert.Contains(xaml, "x:Name=\"TileStatusBadges\"");
-        StringAssert.Contains(xaml, "<RowDefinition Height=\"26\" />");
+        StringAssert.Contains(xaml, "<RowDefinition Height=\"32\" />");
         StringAssert.Contains(xaml, "TextTrimming=\"CharacterEllipsis\"");
         StringAssert.Contains(xaml, "LineStackingStrategy=\"BlockLineHeight\"");
         StringAssert.Contains(xaml, "ToolTip=\"{Binding FileName}\"");
+        Assert.IsFalse(
+            xaml.Contains("x:Name=\"TileStatusBadges\" Grid.Row=\"3\" VerticalAlignment=\"Bottom\"", StringComparison.Ordinal),
+            "Status badges should be vertically centered in a row tall enough for badge padding instead of bottom-aligned into clipping.");
         Assert.IsFalse(
             xaml.Contains("StackPanel Grid.Row=\"4\" Orientation=\"Vertical\"", StringComparison.Ordinal),
             "Status badges should live in a fixed bottom row instead of a flexible StackPanel that can be clipped by wrapped tags.");
@@ -69,6 +72,17 @@ public class MainWindowXamlBindingTests
         Assert.AreEqual(2, CountOccurrences(xaml, "MouseMove=\"ImageList_MouseMove\""));
         Assert.AreEqual(2, CountOccurrences(xaml, "MouseLeave=\"ImageList_MouseLeave\""));
         Assert.AreEqual(2, CountOccurrences(xaml, "LostMouseCapture=\"ImageList_LostMouseCapture\""));
+    }
+
+    [TestMethod]
+    public void ImageViewportSurfacesCanStartRectangleSelectionFromWhitespace()
+    {
+        var xaml = ReadMainWindowXaml();
+
+        StringAssert.Contains(xaml, "x:Name=\"LibraryImageSurface\"");
+        StringAssert.Contains(xaml, "x:Name=\"BucketImageSurface\"");
+        Assert.AreEqual(2, CountOccurrences(xaml, "PreviewMouseLeftButtonDown=\"ImageSurface_PreviewMouseLeftButtonDown\""));
+        StringAssert.Contains(xaml, "Background=\"Transparent\"");
     }
 
     private static string ReadMainWindowXaml()

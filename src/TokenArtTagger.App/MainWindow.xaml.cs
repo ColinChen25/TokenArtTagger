@@ -110,16 +110,47 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _rectangleList = list;
-            _rectangleStartPoint = _dragStartPoint;
-            _isRectangleSelecting = true;
-            _rubberBandLayer = AdornerLayer.GetAdornerLayer(list);
-            _rubberBandAdorner = new RubberBandAdorner(list);
-            _rubberBandLayer?.Add(_rubberBandAdorner);
-            list.CaptureMouse();
-            App.DebugLog.Write("RectangleSelectionStart", ListMode(list), SelectedSummary(list));
+            BeginRectangleSelection(list, _dragStartPoint);
             e.Handled = true;
         }
+    }
+
+    private void ImageSurface_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.Handled)
+        {
+            return;
+        }
+
+        var source = e.OriginalSource as DependencyObject;
+        if (FindAncestor<System.Windows.Controls.ListBox>(source) is not null ||
+            IsFromInteractiveControl(source))
+        {
+            return;
+        }
+
+        var list = ReferenceEquals(sender, BucketImageSurface) ? BucketList : LibraryList;
+        using var logScope = App.DebugLog.Enter("ImageSurfacePreviewMouseLeftButtonDown", ListMode(list), SelectedSummary(list), new Dictionary<string, string?>
+        {
+            ["source"] = e.OriginalSource?.GetType().Name
+        });
+        list.Focus();
+        _dragStartPoint = e.GetPosition(list);
+        _dragSelectionSnapshot = [];
+        BeginRectangleSelection(list, _dragStartPoint);
+        e.Handled = true;
+    }
+
+    private void BeginRectangleSelection(System.Windows.Controls.ListBox list, System.Windows.Point startPoint)
+    {
+        _rectangleList = list;
+        _rectangleStartPoint = startPoint;
+        _isRectangleSelecting = true;
+        _rubberBandLayer = AdornerLayer.GetAdornerLayer(list);
+        _rubberBandAdorner = new RubberBandAdorner(list);
+        _rubberBandLayer?.Add(_rubberBandAdorner);
+        list.CaptureMouse();
+        App.DebugLog.Write("RectangleSelectionStart", ListMode(list), SelectedSummary(list));
     }
 
     private void ImageList_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
@@ -807,6 +838,14 @@ public partial class MainWindow : Window
     private static bool IsFromScrollBar(DependencyObject? source)
     {
         return FindAncestor<System.Windows.Controls.Primitives.ScrollBar>(source) is not null;
+    }
+
+    private static bool IsFromInteractiveControl(DependencyObject? source)
+    {
+        return FindAncestor<System.Windows.Controls.Primitives.ButtonBase>(source) is not null ||
+            FindAncestor<System.Windows.Controls.Primitives.TextBoxBase>(source) is not null ||
+            FindAncestor<System.Windows.Controls.Primitives.Selector>(source) is not null ||
+            FindAncestor<System.Windows.Controls.Primitives.ScrollBar>(source) is not null;
     }
 
     private static T? FindAncestor<T>(DependencyObject? source)

@@ -88,6 +88,40 @@ public sealed class FileRenamerTests
     }
 
     [TestMethod]
+    public async Task BuildPreviewAsync_ClassifiesAlreadyDesiredHashFilenameAsNonBlockingInfo()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, "male-generic-human__74f81f.webp");
+        File.WriteAllBytes(path, [1, 2, 3, 4, 5]);
+        var item = ImageItem.FromPath(path);
+
+        var preview = await FileRenamer.BuildPreviewAsync([item]);
+        var entry = preview.Entries[0];
+
+        Assert.IsFalse(preview.CanRename);
+        Assert.IsTrue(entry.IsAlreadyDesiredHashFilename);
+        Assert.IsFalse(entry.HasBlockingError);
+    }
+
+    [TestMethod]
+    public async Task BuildPreviewAsync_ClassifiesMissingTagsAsBlockingError()
+    {
+        using var temp = new TempFolder();
+        var path = Path.Combine(temp.Path, "portrait.png");
+        File.WriteAllBytes(path, [1, 2, 3]);
+        var item = ImageItem.FromPath(path) with
+        {
+            CurrentTags = new TagSet("male", "melee", null, "dragon")
+        };
+
+        var preview = await FileRenamer.BuildPreviewAsync([item]);
+        var entry = preview.Entries[0];
+
+        Assert.IsFalse(entry.IsAlreadyDesiredHashFilename);
+        Assert.IsTrue(entry.HasBlockingError);
+    }
+
+    [TestMethod]
     public async Task RenameAsync_RenamesInPlaceAndWritesUndoLog()
     {
         using var temp = new TempFolder();

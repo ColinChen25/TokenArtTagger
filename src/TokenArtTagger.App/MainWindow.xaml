@@ -93,6 +93,14 @@
             <Setter Property="IsTabStop" Value="False" />
             <Setter Property="Margin" Value="0,4,0,12" />
         </Style>
+        <Style x:Key="SelectablePreviewMessageText" TargetType="TextBox" BasedOn="{StaticResource SelectableDetailText}">
+            <Setter Property="Foreground" Value="#9C1F1F" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsAlreadyNormalized}" Value="True">
+                    <Setter Property="Foreground" Value="#245C37" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
         <DataTemplate x:Key="SelectedImageDetailsTemplate" DataType="{x:Type vm:ImageItemViewModel}">
             <StackPanel>
                 <TextBlock Text="Current filename" FontWeight="SemiBold" />
@@ -107,7 +115,7 @@
                 <TextBox Text="{Binding CurrentTagsText, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" />
                 <TextBlock Text="Proposed filename" FontWeight="SemiBold" />
                 <TextBox Text="{Binding ProposedFileName, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" Foreground="#245C37" />
-                <TextBox Text="{Binding PreviewError, Mode=OneWay}" Style="{StaticResource SelectableDetailText}" Foreground="#9C1F1F" />
+                <TextBox Text="{Binding PreviewError, Mode=OneWay}" Style="{StaticResource SelectablePreviewMessageText}" />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="ImageTileTemplate" DataType="{x:Type vm:ImageItemViewModel}">
@@ -134,10 +142,10 @@
                 </Border.Style>
                 <Grid>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="122" />
-                        <RowDefinition Height="46" />
-                        <RowDefinition Height="20" />
-                        <RowDefinition Height="26" />
+                        <RowDefinition Height="118" />
+                        <RowDefinition Height="42" />
+                        <RowDefinition Height="18" />
+                        <RowDefinition Height="32" />
                     </Grid.RowDefinitions>
                     <Border Grid.Row="0" Background="#E8E5DE" CornerRadius="4">
                         <Image Source="{Binding Thumbnail}" Stretch="Uniform" Loaded="ThumbnailImage_Loaded" />
@@ -148,7 +156,7 @@
                     <TextBlock Grid.Row="2" Margin="0,2,0,0" Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
                                FontSize="10" LineHeight="13" LineStackingStrategy="BlockLineHeight"
                                Foreground="#666666" ToolTip="{Binding FileName}" />
-                    <WrapPanel x:Name="TileStatusBadges" Grid.Row="3" VerticalAlignment="Bottom" ToolTip="{Binding PreviewError}">
+                    <WrapPanel x:Name="TileStatusBadges" Grid.Row="3" VerticalAlignment="Center" ToolTip="{Binding PreviewError}">
                         <Border Background="#FFF1F0" BorderBrush="#B42318" BorderThickness="1" ToolTip="{Binding TagIssueMessage}">
                             <Border.Style>
                                 <Style TargetType="Border" BasedOn="{StaticResource TileBadge}">
@@ -174,6 +182,19 @@
                                 </Style>
                             </Border.Style>
                             <TextBlock Text="Ready" Foreground="#245C37" FontWeight="SemiBold" FontSize="11" />
+                        </Border>
+                        <Border Background="#E9F8EE" BorderBrush="#99D2A7" BorderThickness="1">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource TileBadge}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsAlreadyNormalized}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="Done" Foreground="#245C37" FontWeight="SemiBold" FontSize="11" />
                         </Border>
                         <Border Background="#FFF7E6" BorderBrush="#E4B55C" BorderThickness="1">
                             <Border.Style>
@@ -301,7 +322,8 @@
                         </DockPanel>
                     </Border>
 
-                    <Border Grid.Column="1" Margin="12,0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="10">
+                    <Border x:Name="LibraryImageSurface" Grid.Column="1" Margin="12,0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="10"
+                            PreviewMouseLeftButtonDown="ImageSurface_PreviewMouseLeftButtonDown">
                         <DockPanel>
                             <TextBlock DockPanel.Dock="Top" Text="Images" Style="{StaticResource PanelTitle}" />
                             <ListBox x:Name="LibraryList"
@@ -413,7 +435,8 @@
                             </DockPanel>
                         </Border>
 
-                        <Border Grid.Column="1" Margin="12,0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="10">
+                        <Border x:Name="BucketImageSurface" Grid.Column="1" Margin="12,0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="10"
+                                PreviewMouseLeftButtonDown="ImageSurface_PreviewMouseLeftButtonDown">
                             <DockPanel>
                                 <TextBlock DockPanel.Dock="Top" Text="Current Page" Style="{StaticResource PanelTitle}" />
                                 <ListBox x:Name="BucketList"

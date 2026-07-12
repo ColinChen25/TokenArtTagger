@@ -454,12 +454,34 @@ public sealed class MainViewModel : ViewModelBase
             Items.FirstOrDefault(item => item.FullPath == entry.Item.FullPath)?.ApplyPreview(entry);
         }
 
-        var errors = _lastPreview.Entries.Count(entry => !entry.CanRename);
-        SetStatus(errors == 0
-            ? $"Preview ready for {_lastPreview.Entries.Count} {label} image(s)."
-            : $"Preview found {errors} issue(s). Fix missing tags or conflicts before renaming.",
-            isWarning: errors > 0);
-        RenameBlockReason = _lastPreview.CanRename ? "Ready to rename selected preview." : "Preview has issues.";
+        var blockingErrors = _lastPreview.BlockingErrorCount;
+        if (blockingErrors == 0)
+        {
+            if (_lastPreview.CanRename)
+            {
+                SetStatus($"Preview ready for {_lastPreview.Entries.Count} {label} image(s).");
+            }
+            else
+            {
+                var renameableCount = _lastPreview.Entries.Count(entry => entry.CanRename);
+                SetStatus(renameableCount == 0
+                    ? $"Preview found {_lastPreview.AlreadyDesiredCount} already-normalized image(s). No rename is needed."
+                    : $"Preview includes {_lastPreview.AlreadyDesiredCount} already-normalized image(s). Select only images that need renaming to continue.");
+            }
+        }
+        else
+        {
+            SetStatus($"Preview found {blockingErrors} issue(s). Fix missing tags or conflicts before renaming.", isWarning: true);
+        }
+
+        var hasRenameableEntries = _lastPreview.Entries.Any(entry => entry.CanRename);
+        RenameBlockReason = _lastPreview.CanRename
+            ? "Ready to rename selected preview."
+            : blockingErrors == 0
+                ? hasRenameableEntries
+                    ? "Some selected images already use the desired hash filename format."
+                    : "Selected images already use the desired hash filename format."
+                : "Preview has issues.";
         RaiseCommandStates();
     }
 

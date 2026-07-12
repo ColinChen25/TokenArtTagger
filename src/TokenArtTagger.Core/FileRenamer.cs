@@ -4,6 +4,8 @@ namespace TokenArtTagger.Core;
 
 public static class FileRenamer
 {
+    public const string AlreadyDesiredHashFilenameMessage = "already in desired hash filename format";
+
     public static async Task<RenamePreview> BuildPreviewAsync(
         IReadOnlyList<ImageItem> items,
         IProgress<RenamePreviewProgress>? progress = null,
@@ -42,7 +44,7 @@ public static class FileRenamer
                     var proposedPath = Path.Combine(selectedItem.DirectoryPath, proposedFileName);
                     if (string.Equals(proposedPath, selectedItem.FullPath, StringComparison.OrdinalIgnoreCase))
                     {
-                        entries.Add(new RenamePreviewEntry(selectedItem, hash, proposedFileName, proposedPath, "already in desired hash filename format"));
+                        entries.Add(new RenamePreviewEntry(selectedItem, hash, proposedFileName, proposedPath, AlreadyDesiredHashFilenameMessage));
                         continue;
                     }
 

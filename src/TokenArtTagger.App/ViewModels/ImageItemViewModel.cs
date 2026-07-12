@@ -36,7 +36,14 @@ public sealed class ImageItemViewModel : ViewModelBase
 
     public bool HasInvalidTags => TagIssue.Kind == TagIssueKind.Invalid;
 
-    public bool HasRenameBlockingIssue => HasInvalidTags || !string.IsNullOrWhiteSpace(PreviewError);
+    public bool IsAlreadyNormalized => string.Equals(
+        PreviewError,
+        FileRenamer.AlreadyDesiredHashFilenameMessage,
+        StringComparison.OrdinalIgnoreCase);
+
+    public bool HasPreviewBlockingError => !string.IsNullOrWhiteSpace(PreviewError) && !IsAlreadyNormalized;
+
+    public bool HasRenameBlockingIssue => HasInvalidTags || HasPreviewBlockingError;
 
     public bool IsCompleteForCurrentBucketPass
     {
@@ -67,6 +74,8 @@ public sealed class ImageItemViewModel : ViewModelBase
         {
             if (SetProperty(ref _previewError, value))
             {
+                OnPropertyChanged(nameof(IsAlreadyNormalized));
+                OnPropertyChanged(nameof(HasPreviewBlockingError));
                 OnPropertyChanged(nameof(HasRenameBlockingIssue));
                 OnPropertyChanged(nameof(TagIssueMessage));
             }
@@ -92,6 +101,8 @@ public sealed class ImageItemViewModel : ViewModelBase
         OnPropertyChanged(nameof(TagIssue));
         OnPropertyChanged(nameof(HasIncompleteTags));
         OnPropertyChanged(nameof(HasInvalidTags));
+        OnPropertyChanged(nameof(IsAlreadyNormalized));
+        OnPropertyChanged(nameof(HasPreviewBlockingError));
         OnPropertyChanged(nameof(HasRenameBlockingIssue));
         OnPropertyChanged(nameof(TagIssueMessage));
     }

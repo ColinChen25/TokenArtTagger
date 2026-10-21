@@ -4,6 +4,8 @@ Prepared 2026-10-21. Proposal only; no models installed, inference performed, or
 
 Development branch: `codex/local-ai-tagging`, based on `master`.
 
+Configure source folders in the private local dataset manifest. Use the [inventory workflow](ai-dataset-inventory.md) to distinguish authoritative filename tags from the untagged backlog; retain collection listings and label distributions only locally.
+
 **Recommendation:** add a local vision model that predicts the existing controlled tags, then improve it with a searchable collection of human-tagged examples. Automatically stage only sufficiently reliable fields, and send uncertain fields to the existing manual workflow. Keep filename changes behind the existing preview and confirmation.
 
 This is feasible enough to justify a small benchmark first. Neither accuracy nor throughput on this image collection has been measured. The first success metric should be time saved at an acceptable error rate, rather than the percentage of images receiving some prediction.
@@ -150,7 +152,7 @@ Focused implementation checks should cover invalid tags, role/style conflicts, g
 
 ## Remaining details for later
 
-1. Paths to the tagged and untagged folders, so filename import coverage and a benchmark manifest can be prepared.
+1. Source paths and filename import coverage are now resolved. The tagged folder is nested inside the backlog root and must be excluded from the backlog enumeration. Content-based duplicate grouping and image decoding remain to be checked before assigning evaluation splits.
 2. Which categories wings and hooves distinguish, and which tag each feature suggests. Caster clothing guidance is recorded above; other ambiguous race/weapon rules can be learned from the labeled examples where sufficiently consistent.
 3. Whether unresolved gender/race should remain blank or eventually use a new unknown tag. Default: keep them blank without changing the filename schema.
 4. Whether overnight GPU use is acceptable, and any practical memory or responsiveness limits while other applications are running.

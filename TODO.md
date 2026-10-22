@@ -4,6 +4,7 @@
 
 - Direct model download verified and first model cached; see [routing evidence](docs/model-download-routing.md). Next, set up the local inference runtime using separately verified direct downloads and reuse the cached model.
 - Build a resumable local-model benchmark using the existing MCP/CLI image access and authoritative filename labels. Keep outputs separate from current tags.
+- Include artistic nudity, minimal tribal outfits, and succubus imagery in model selection and evaluation. Measure refusals, unsupported guesses, and tag accuracy separately; use the neutral prompt and fallback criteria in [content compatibility](docs/local-ai-content-compatibility.md). This requirement is recorded, not yet runtime-tested.
 - Target 16 GB total shared RAM, CPU-only support, one image/model at a time, measured memory use, and pause/resume under memory pressure. Background speed is secondary to accuracy and foreground responsiveness.
 - First verify decoding and duplicate groups, then run a small feasibility check before the larger held-out evaluation. See [the implementation draft](docs/local-ai-tagging-draft.md).
 

@@ -1,5 +1,11 @@
 # TODO
 
+## Next AI milestone
+
+- Build a resumable local-model benchmark using the existing MCP/CLI image access and authoritative filename labels. Keep outputs separate from current tags.
+- Target 16 GB total shared RAM, CPU-only support, one image/model at a time, measured memory use, and pause/resume under memory pressure. Background speed is secondary to accuracy and foreground responsiveness.
+- First verify decoding and duplicate groups, then run a small feasibility check before the larger held-out evaluation. See [the implementation draft](docs/local-ai-tagging-draft.md).
+
 ## Future Features
 
 - SQLite database for persistent image records and rename history.
@@ -11,7 +17,7 @@
 - Automated undo from JSON undo logs.
 - Freeform tags for exact one-off weapon and creature details such as specific named weapons, visual motifs, or source-specific notes.
 - Better animated WebP preview handling if Windows codecs expose only a static frame.
-- AI-assisted tag suggestions, never automatic tagging without confirmation.
+- Local AI suggestions with provenance and review; enable automatic staging only for fields with measured reliability. Keep uncertain fields unresolved and retain batch confirmation for actual filename changes.
 
 ## Safety Follow-Ups
 

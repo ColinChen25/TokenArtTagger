@@ -1,6 +1,6 @@
 # Local AI tagging implementation draft
 
-Prepared 2026-10-21. Proposal only; no models installed, inference performed, or application behavior changed.
+Prepared 2026-10-21; revised 2026-10-22 for the user's 16 GB shared-RAM baseline. Local inference remains a proposal: no models installed or inference benchmark performed. The filename inventory and the [MCP/CLI app integration](agent-integration.md) are implemented.
 
 Development branch: `codex/local-ai-tagging`, based on `master`.
 
@@ -15,7 +15,8 @@ This is feasible enough to justify a small benchmark first. Neither accuracy nor
 - Support collections mixing TokenArtTagger filenames, older manual filename formats and untagged images.
 - **Filename tags are authoritative.** Import these as trusted labels after verifying the parser maps the old and new formats correctly. Unsupported or ambiguous filename syntax is an import issue, not evidence that the user's tags are wrong.
 - Art styles are mixed. Evaluate performance across styles rather than optimizing solely for one illustration domain.
-- Hardware: measure available memory and runtime compatibility on the target machine. Begin with one bounded inference job and pause/resume controls; installed RAM is not a usable-memory budget.
+- Deployment baseline: **16 GB total system RAM shared with other running programs**, with CPU-only operation as a design requirement and a discrete GPU optional. The development machine's discrete GPU and additional RAM must not become minimum requirements. Installed RAM is not a usable-memory budget; admission and pause decisions must use current available memory and measured workload peaks.
+- Slower background processing is acceptable. Prefer accuracy, low memory use, foreground responsiveness, and reliable pause/resume over throughput. Do not substitute confident guesses or repeated low-quality predictions for reliable tagging merely to use a smaller model.
 - Favor **fewer mistakes**, accepting lower automatic coverage. The earlier suggested 98% field precision is not an accepted tolerance; choose a more conservative policy from measured results and leave unsupported cases unresolved.
 - Support both tagging the untagged backlog and auditing existing tags. An AI disagreement with an authoritative filename is a separate suggestion and must not silently replace the original tag or become a training label.
 - Caster cues: wizard clothing tends toward robes and hats; cleric clothing may be white and resemble Roman togas; druid clothing is more plant/nature themed. Treat these as soft cues alongside trusted examples, not universal rules.
@@ -35,7 +36,7 @@ Repository inspection found a .NET 10 WPF application, with reusable foundations
 - `FilenameGenerator`, `RenameReadiness`, and `FileRenamer` provide validation and a separate rename workflow.
 - `ContentHasher` computes full SHA-256 hashes. The existing `FileIdentity` includes path, size, and modification time, so it is unsuitable as the only long-lived AI identity across renames.
 
-The existing TODO says AI suggestions must always be confirmed. This draft proposes revising that product direction to match the new request: calibrated high-confidence tags may be staged automatically; uncertain cases require review. Renaming remains a separate action.
+The TODO now follows the agreed product direction: calibrated high-confidence fields may eventually be staged automatically; uncertain cases require review. During benchmarking, all predictions stay separate from accepted tags. Renaming remains a separate action.
 
 Validate the baseline on a 16 GB machine without requiring a discrete GPU. Until measured there, portability remains a target. Recheck current CPU/runtime compatibility and available memory rather than relying on a development-machine snapshot.
 
@@ -51,13 +52,37 @@ These are candidates, not claims about which model performs best on tabletop cha
 | WD image tagger | Produces many illustration-oriented attributes; has an ONNX distribution | Its Danbooru vocabulary and training domain differ from this app's fantasy taxonomy | Optional comparison for an anime-heavy collection |
 | Fine-tuning a full vision-language model | Could adapt more deeply to the collection | More data preparation, training, deployment, and regression work | Defer until simpler approaches plateau |
 
-For the first benchmark, compare **Qwen 3.5 4B**, **Qwen 3.5 9B**, and **Gemma 4 E2B** through Ollama. Current llama.cpp-backed Q4 listings are approximately 3.3 GB, 6.6 GB, and 4.6 GB respectively. These are artifact sizes, not total runtime VRAM requirements. Image processing, context, and other applications consume additional memory. Start with one request at a time, bounded image resolution, and a modest context limit; measure actual GPU memory before choosing the default. The 4B model is the initial integration candidate, while the 9B model is a quality comparison. [Qwen 4B](https://ollama.com/library/qwen3.5:4b), [Qwen 9B](https://ollama.com/library/qwen3.5:9b), [Gemma E2B](https://ollama.com/library/gemma4:e2b).
+Start the feasibility benchmark with **Qwen3-VL 2B Instruct Q4_K_M**, whose current Ollama listing is approximately **1.9 GB** including its vision projector. This is a candidate, not a claim of sufficient accuracy or a 1.9 GB RAM requirement. Record the resolved model digest and runtime version; even explicit tags can change. [Exact model listing](https://ollama.com/library/qwen3-vl:2b-instruct-q4_K_M).
 
-Qwen3-VL 4B/8B and Gemma 3 4B remain fallback candidates if the newer models have runtime or output-format problems. Avoid relying on a mutable `latest` alias in saved runs. [Qwen3-VL](https://ollama.com/library/qwen3-vl), [Gemma 3](https://ollama.com/library/gemma3).
+If the first model is unsuitable, compare **Qwen3.5 2B** next, one model at a time. Its current Windows-relevant llama.cpp listing is approximately **2.7 GB**, using Q8_0 language weights and a BF16 projector. A **Qwen3.5 0.8B** comparison is smaller (about **1.3 GB** for that backend), but may yield more unresolved fields or errors and must pass the same evaluation. Download and parameter counts are not runtime-memory measurements. Larger 4B models are optional later quality comparisons only if the measured shared-memory budget permits; 8B/9B models are removed from the default plan. [Qwen 2B](https://ollama.com/library/qwen3.5:2b), [Qwen 0.8B](https://ollama.com/library/qwen3.5:0.8b).
 
 For embeddings, start by evaluating **SigLIP 2 Base**. Its official model card documents image feature extraction and zero-shot image classification. Whether these features separate this user's fantasy races and weapon categories is an experiment, not an established result. [Google model card](https://huggingface.co/google/siglip2-base-patch16-256).
 
 WD EVA02-Large Tagger v3 supports general and character tags and supplies ONNX-compatible inference. Because it was trained on Danbooru, I would treat its attributes as auxiliary evidence and explicitly map any useful outputs into this app's vocabulary. [Author's model card](https://huggingface.co/SmilingWolf/wd-eva02-large-tagger-v3).
+
+## Low-memory background profile
+
+These are proposed starting settings, not tested guarantees or already-implemented limits:
+
+| Setting | Initial policy |
+|---|---|
+| Target machine | 16 GB total shared RAM; CPU-only inference must be tested; GPU optional |
+| Memory target | Aim for at most 4 GiB incremental system RAM for the tagging workload, including app/decoder growth and model runtime; measure cold load and inference peaks |
+| Headroom | Initially reserve 4 GiB of available system memory; admit work only when the measured additional peak plus reserve fits. If it does not fit, wait or pause |
+| Concurrency | One image request and one loaded model; unload the embedding model before loading the vision-language model |
+| CPU use | Start with two inference threads and an app-owned worker at below-normal priority; make both configurable after measuring responsiveness |
+| Input | Stream one original at a time; begin around 768 pixels on the longest edge, preserving aspect ratio and small-detail limitations |
+| Context/output | Begin with a 4,096-token context and a short bounded structured response; detect truncation and fail the item rather than silently losing schema or evidence |
+| Queue/cache | Disk-backed checkpoints after each image; cache by full content hash and versioned settings; no preloading of the whole library |
+| Idle/pressure | Stop admitting images under memory pressure, cancel the current request if needed, unload the app-owned model, and resume after headroom recovers with hysteresis |
+
+The memory target is not an operating-system hard cap. Track the model process tree, app allocations, system available memory, and commit pressure; integrated-GPU memory also competes with system RAM. Sampling can miss spikes, so use measured peaks plus a margin and validate under competing foreground load. Never claim that having 16 GB installed alone guarantees a safe run. Avoid relying on paging to make a larger model appear to fit.
+
+For an app-owned Ollama service, explicitly set one loaded model and one parallel request, bound context, and unload when idle or paused. These controls are supported by Ollama, but do not impose a hard RAM ceiling. Do not change global runtime settings or stop models belonging to other applications; isolate the worker or report that isolation is needed. [Ollama concurrency and unloading](https://docs.ollama.com/faq), [context memory](https://docs.ollama.com/context-length).
+
+Longer wall-clock time can buy sequential processing, unloading between phases, and a limited second look at difficult images. It cannot guarantee that a smaller model will recover distinctions it does not recognize. Keep the acceptance standard fixed: prefer more abstentions and manual review to more incorrect tags. Test a higher-resolution second pass only when it fits the same memory policy. Treat repeated answers as correlated evidence, not independent votes.
+
+For personalization, build embeddings incrementally and store them on disk. Begin evaluation without examples, then test one or two retrieved image examples within the context budget. If that raises memory too much, compare a lightweight classifier over frozen embeddings and show neighbors in review; do not require a large multi-image prompt to make the basic feature usable.
 
 ## Proposed behavior
 
@@ -82,7 +107,7 @@ Begin with **retrieval**, then consider **training**:
 
 - Import authoritative filename labels as trusted examples, retaining the original filename and parser version. Inventory old filename variants and verify normalization before importing; route unrecognized syntax to an import report. New AI-only predictions remain separate from this trusted collection.
 - Compute an embedding per image and retrieve roughly 3–5 diverse relevant examples. Use similarity for search, not as a probability that a tag is correct.
-- Present example images with their confirmed labels to the vision model when testing whether examples help. Labels alone cannot teach a visual correspondence.
+- Present example images with their confirmed labels to the vision model when testing whether examples help. Labels alone cannot teach a visual correspondence. Under the low-memory profile, retrieve candidates on disk but initially send only one or two examples; do not load all retrieved images into one prompt by default.
 - Include contrasting examples for confusing categories, not just several near-identical pictures. Avoid allowing one duplicated illustration or art style to dominate the examples.
 - When auditing an already-tagged image, exclude the image and its duplicate variants from retrieved examples, and withhold its current labels from the initial prediction. Otherwise the audit can simply reproduce the answer it was shown. Compare the independent result with the filename afterward.
 - Store corrections immediately. Rebuild the example index incrementally; this changes the model's reference material without changing its weights.
@@ -112,7 +137,7 @@ Keep the WPF application and its core rules. Add narrow services rather than put
 | Component | Responsibility |
 |---|---|
 | `IAiTaggingProvider` / `OllamaTaggingProvider` | Send image bytes and a versioned prompt to a local model; parse bounded structured responses |
-| `AiTaggingCoordinator` | Queue, cancellation, timeouts, resumable jobs, GPU concurrency, progress |
+| `AiTaggingCoordinator` | Sequential queue, cancellation, timeouts, resumable jobs, available-memory admission, pressure pause/unload, CPU/GPU selection, progress |
 | `AiSuggestionValidator` | Allowed values, role/style compatibility, abstention, dependency-aware merging |
 | `AiSuggestionStore` | Predictions, provenance, run metadata, review decisions, errors, rollback data |
 | `ExampleIndex` | Full-hash identities, embeddings, confirmed examples, similarity retrieval |
@@ -134,19 +159,26 @@ For GIFs and animated WebP, use representative frames only after reliable decodi
 
 ## Delivery sequence and acceptance checks
 
+The next concrete deliverable is a **resumable local benchmark runner and report**, controlled through the app's existing integration where practical. Complete it in this order:
+
+1. Verify image decoding (especially the 101 backlog WebP files), stream full content hashes, and identify duplicate/variant groups. Use existing MCP/CLI tools for app inspection rather than duplicating filename parsing. Keep private per-image results outside Git.
+2. Add the local provider, strict output validator, disk checkpoints, resource sampling, and one-request queue. Save benchmark predictions separately; this phase must not call `update_tags` or rename files. Unit and fixture checks can proceed before model downloads.
+4. If feasible, run the larger evaluation below with fixed duplicate-safe splits. Compare against authoritative filenames hidden from the model. Validate the baseline on 16 GB hardware under foreground load; a CPU run or memory limit on the 32 GB development machine is useful preliminary evidence, not a substitute for that test.
+5. Choose the smallest candidate that meets both the measured resource policy and useful conservative accuracy. Then add the background suggestions/review workflow. If no candidate qualifies, preserve review-only output and report the shortfall instead of increasing memory requirements silently.
+
 | Phase | Deliverable | Evidence needed to proceed |
 |---|---|---|
-| 1. Dataset audit and benchmark | Read-only label inventory, taxonomy notes, reproducible model comparison | Useful predictions at viable latency on representative art |
+| 1. Dataset audit and benchmark | Filename inventory complete; next: duplicate/decoder audit, low-memory local runner, reproducible comparison | Useful conservative predictions, bounded peak RAM, responsive foreground apps, and recoverable interrupted jobs on the 16 GB target |
 | 2. Suggestion MVP | Local model connection, background queue, saved proposals, review UI | No loss of manual edits; valid schema; cancel/resume and decoder failures handled |
 | 3. Personalization | Confirmed-example retrieval; optional frozen-embedding classifiers | Improvement over the no-example baseline on held-out images |
 | 4. Selective automation | Per-category acceptance policies, automatic partial tags, batch revert, audit sampling | Sufficient precision and useful coverage, measured separately for fields and complete images |
 | 5. Optimization | Model scheduling, cache tuning, larger-library retrieval | Measurements identify a worthwhile bottleneck |
 
-Inventory tagged filenames and their class distribution privately first, verifying both legacy and TokenArtTagger parsing. Use a roughly **300–500 image pilot** for model comparison with common and rare categories, different art styles, and difficult cases represented. The confirmed filename labels supply ground truth; verify import fidelity rather than requesting wholesale relabeling. Reserve disjoint examples for retrieval/training, calibration, and final testing before tuning. The dataset may not establish very high precision for every rare class, even if the overall result looks strong.
+After the feasibility check, use a roughly **300–500 image pilot** for model comparison with common and rare categories, different art styles, and difficult cases represented. The confirmed filename labels supply ground truth without requesting wholesale relabeling. Reserve disjoint examples for retrieval/training, calibration, and final testing before tuning; feasibility images belong to development data, not the final test set. The dataset may not establish very high precision for every rare class, even if the overall result looks strong.
 
 Separate training/example retrieval, calibration, and final testing. Keep exact duplicates and related variants in the same split; exclude test examples from retrieval. Hide filenames, folder labels, and the target labels from the vision prompt during evaluation so it actually has to inspect the image. Include previously untagged images in a later audited pilot, since previously tagged examples may be easier than the backlog.
 
-Record per-category precision/recall, common confusions, full-tag exact match, automatic acceptance coverage, review rate, median and slow-case latency, peak VRAM, decoding/output errors, and measured human review time. Report sample counts and uncertainty; a handful of correct predictions is insufficient evidence for unattended acceptance.
+Record per-category precision/recall, common confusions, full-tag exact match, automatic acceptance coverage, review rate, median and slow-case latency, total peak workload RAM (including cold load and decoding), minimum system available memory, commit pressure, peak VRAM where relevant, CPU/foreground responsiveness, decoding/output errors, and measured human review time. Report sample counts and uncertainty; a handful of correct predictions is insufficient evidence for unattended acceptance.
 
 Focused implementation checks should cover invalid tags, role/style conflicts, generic-role handling, partial acceptance, human edits racing with inference, cache invalidation, crash/resume, cancellation, batch revert, and the fact that AI processing cannot invoke rename. The benchmark should estimate total backlog duration from observed throughput rather than promise a speed now.
 
@@ -155,6 +187,6 @@ Focused implementation checks should cover invalid tags, role/style conflicts, g
 1. Source paths and filename import coverage are now resolved. The tagged folder is nested inside the backlog root and must be excluded from the backlog enumeration. Content-based duplicate grouping and image decoding remain to be checked before assigning evaluation splits.
 2. Which categories wings and hooves distinguish, and which tag each feature suggests. Caster clothing guidance is recorded above; other ambiguous race/weapon rules can be learned from the labeled examples where sufficiently consistent.
 3. Whether unresolved gender/race should remain blank or eventually use a new unknown tag. Default: keep them blank without changing the filename schema.
-4. Whether overnight GPU use is acceptable, and any practical memory or responsiveness limits while other applications are running.
+4. Specific CPU and operating-system details of additional target machines. Default to the 16 GB shared-RAM profile and optional GPU; slower unattended background work is accepted, subject to memory and responsiveness checks.
 5. Provisioning on additional machines requires a fresh route check and current download authorization; see the [download guide](model-download-routing.md).
 

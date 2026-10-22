@@ -88,6 +88,7 @@ public sealed partial class MainViewModel
     // Always entered on the WPF dispatcher. UI controls are disabled for the duration of each request.
     public async Task<AgentResult> HandleAgentRequestAsync(AgentRequest request, CancellationToken token)
     {
+        using var requestLog = DebugLog?.Enter("AgentRequest", details: new Dictionary<string, string?> { ["tool"] = request.Name });
         if (!AgentAccessEnabled) return AgentResult.Error("agent_disabled", "Enable Agent access in the desktop app.");
         if (!IsWorkspaceAvailable) return AgentResult.Error("app_busy", "The desktop is scanning, previewing, or applying another operation. Retry after it completes.");
         AgentToolCatalog.ValidateArguments(request.Name, request.Arguments);

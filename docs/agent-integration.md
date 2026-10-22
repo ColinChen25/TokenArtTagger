@@ -11,7 +11,7 @@ flowchart LR
   App -->|User confirms preview|Files[In-place filename changes]
 ```
 
-The bridge has no AI model, hosted API dependency, HTTP listener, or runtime package download. `view_image` returns image content to its caller, so a cloud agent receives those pixels through its normal tool context. Local inference remains a separate future feature.
+The bridge has no AI model, hosted API dependency, HTTP listener, or runtime package download. `view_image` returns image content to its caller, so a cloud agent receives those pixels through its normal tool context. The separate [local benchmark client](local-ai-benchmark.md) consumes the same MCP pixels locally and calls an isolated local runtime; it does not send its inference images to a hosted service.
 
 ## Build and connect
 

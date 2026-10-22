@@ -2,8 +2,9 @@
 
 ## Next AI milestone
 
-- Build a resumable local-model benchmark using the existing MCP/CLI image access and authoritative filename labels. Keep outputs separate from current tags.
-- Include artistic nudity, minimal tribal outfits, and succubus imagery in model selection and evaluation. Measure refusals, unsupported guesses, and tag accuracy separately; use the neutral prompt and fallback criteria in [content compatibility](docs/local-ai-content-compatibility.md). This requirement is recorded, not yet runtime-tested.
+- Runtime setup and two synthetic CPU vision tests passed on 2026-10-23. The model cache was reused. See [setup](docs/local-ai-runtime-setup.md).
+- The [resumable local benchmark and private HTML review](docs/local-ai-benchmark.md) are implemented using read-only MCP access and authoritative filename labels. Finish the development-set evaluation before selecting any automatic acceptance policy.
+- Visually annotate the benchmark's artistic nudity, minimal outfits and succubus imagery, then report refusals and tag accuracy separately. Follow [content compatibility](docs/local-ai-content-compatibility.md); an answered image can still be tagged incorrectly.
 - Target 16 GB total shared RAM, CPU-only support, one image/model at a time, measured memory use, and pause/resume under memory pressure. Background speed is secondary to accuracy and foreground responsiveness.
 - First verify decoding and duplicate groups, then run a small feasibility check before the larger held-out evaluation. See [the implementation draft](docs/local-ai-tagging-draft.md).
 

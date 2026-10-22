@@ -1,9 +1,9 @@
-param([string]$DotnetPath)
+param([string]$DotnetPath, [string]$AppDll, [string]$BridgeDll)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 if (-not $DotnetPath) { $DotnetPath = Join-Path $repo '.tools\dotnet\dotnet.exe' }
-$appDll = Join-Path $repo 'src\TokenArtTagger.App\bin\Debug\net10.0-windows\TokenArtTagger.App.dll'
-$bridgeDll = Join-Path $repo 'src\TokenArtTagger.Agent\bin\Debug\net10.0\TokenArtTagger.Agent.dll'
+if (-not $AppDll) { $AppDll = Join-Path $repo 'src\TokenArtTagger.App\bin\Debug\net10.0-windows\TokenArtTagger.App.dll' }
+if (-not $BridgeDll) { $BridgeDll = Join-Path $repo 'src\TokenArtTagger.Agent\bin\Debug\net10.0\TokenArtTagger.Agent.dll' }
 $testRoot = Join-Path $repo ('.cache\agent-smoke\' + [Guid]::NewGuid().ToString('N'))
 $fixture = Join-Path $testRoot ('images-' + [char]0x56FE)
 $sorted = Join-Path $fixture 'Sorted'
@@ -113,6 +113,11 @@ try {
     $target = @{ id = $returned.images[0].id; expectedRevision = $returned.images[0].revision }
     [void](Call 'reset_tags' @{ targets = @($target) })
     Check (((Call 'app_status' @{}).structuredContent.changed) -eq 0) 'Reset did not restore filename tags.'
+    $status = (Call 'app_status' @{}).structuredContent
+    [void](Call 'scan_images' @{ root = $fixture; expectedWorkspaceRevision = $status.workspaceRevision })
+    $filtered = (Call 'list_images' @{ folder = $sorted; query = 'bard'; state = 'tagged'; limit = 2 }).structuredContent
+    Check ($filtered.total -eq 1 -and $null -eq $filtered.nextOffset -and $filtered.images[0].filenameTags.weaponOrStyle -eq 'bard') 'Filtered final page did not return.'
+    Check (((Call 'list_images' @{ query = 'no-such-image'; limit = 2 }).structuredContent.total) -eq 0) 'Empty query result failed.'
     $newHashes = @(Get-ChildItem -LiteralPath $fixture -File -Recurse | Get-FileHash | Select-Object Path,Hash)
     Check (-not (Compare-Object $originalHashes $newHashes -Property Path,Hash)) 'Source images were renamed or changed.'
     'PASS: MCP handshake/discovery; all 11 tools; real desktop IPC; CLI and Unicode paths; nested exclusion; atomic validation; stale revisions; PNG pixels; SHA-256; selection; rename preview; rescan persistence; reset; original files unchanged.'

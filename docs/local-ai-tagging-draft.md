@@ -1,5 +1,6 @@
 # Local AI tagging implementation draft
 
+Prepared 2026-10-21; updated 2026-10-23. The first Qwen3-VL 2B model was [provisioned and checksum-verified](model-download-routing.md). [Runtime setup and synthetic CPU vision inference](local-ai-runtime-setup.md) have passed. A [resumable real-image benchmark with a local review page](local-ai-benchmark.md) is implemented and under evaluation. The 16 GB shared-RAM baseline remains a target requiring hardware validation. The filename inventory and [MCP/CLI app integration](agent-integration.md) are implemented; automatic tagging is not yet enabled.
 
 Development branch: `codex/local-ai-tagging`, based on `master`.
 
@@ -63,7 +64,7 @@ If the vision-language model refuses otherwise classifiable art or gives poor at
 
 ## Low-memory background profile
 
-These are proposed starting settings, not tested guarantees or already-implemented limits:
+These are the target settings. The benchmark now implements the admission, sampling, CPU, context, sequential processing, checkpoint and unload controls described in [its operating guide](local-ai-benchmark.md); the production UI and automatic recovery under memory pressure remain pending. None is a hard OS memory guarantee:
 
 | Setting | Initial policy |
 |---|---|

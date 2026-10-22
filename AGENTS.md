@@ -19,3 +19,5 @@ Keep image paths, private manifests, model files, runtime profiles, credentials,
 Before provisioning, inspect the private local setup status and reuse the selected model cache if verified. See `docs/model-download-routing.md` and `docs/local-ai-runtime-setup.md`. Any direct-routing claim requires live route and redirected-endpoint verification.
 
 Continue local AI work in small, checkpointed steps. Read `docs/local-ai-runtime-setup.md` and the private setup status before repeating runtime downloads or launching another worker. Runtime discovery is distinct from inference and accuracy validation; do not treat a downloaded archive or a prepared script as a passed runtime test.
+
+The local CPU benchmark and private review exporter are documented in `docs/local-ai-benchmark.md`. Use its resumable scripts instead of ad hoc model calls. Inspect the run's status, lock and owned process identities before resuming; respect STOP markers. Keep benchmark suggestions separate from app tags. Synthetic vision checks have passed, but schema-valid predictions and success on the development machine do not establish tagging accuracy or suitability on a 16 GB machine.

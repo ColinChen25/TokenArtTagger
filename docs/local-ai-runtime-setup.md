@@ -41,6 +41,8 @@ Optional parameters are `-RuntimePath`, `-ModelDirectory`, and `-Port` (default 
 
 This check does **not** establish CPU inference support, image decoding, tag accuracy, refusal behavior, or suitability for 16 GB shared RAM. Check current available memory before inference; an earlier reading is not a memory reservation. Keep [artistic-nudity/NSFW compatibility](local-ai-content-compatibility.md) in the subsequent real-image benchmark.
 
-## Next bounded step after successful setup
+## CPU inference after setup
 
-Run one synthetic-image CPU inference with two threads, a bounded response, and memory sampling. Check that it uses the vision projector, produces valid structured output, and unloads afterward. Use an app-owned process and save the result before expanding to real library examples. Do not make claims about tagging accuracy from a synthetic test or from a CPU test on this 32 GB development machine.
+The two-image synthetic CPU check now passes: a red square and blue circle were identified correctly in about 31-32 seconds each, with zero reported VRAM use and verified unloading. Peak sampled working set was about 3.12 GiB for the runtime process tree and harness. This is inference evidence, not a tagging-accuracy or 16 GB hardware certification.
+
+The [resumable real-image benchmark and review workflow](local-ai-benchmark.md) is now implemented. It records the WPF app, MCP bridge, runtime worker and harness separately from the already-resident app baseline, and unloads after every image. Read that document and the private run checkpoint before launching another inference worker. The earlier setup-status file describes installation/discovery only; inference results live in their own run directories.

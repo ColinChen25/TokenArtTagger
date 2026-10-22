@@ -1,10 +1,10 @@
 # Local runtime setup checkpoint
 
-Checkpoint prepared 2026-10-22 on `codex/local-ai-tagging`. Runtime installation and its live checks are pending completion of the background job described below. Do not infer success from this document: read the local status file and check report first.
+Setup completed and live discovery verified **2026-10-23** on `codex/local-ai-tagging`. Ollama 0.40.8 is installed locally, all five cached Qwen model blobs passed full size/hash verification, and the runtime discovered the pinned model with vision capability. The temporary loopback server shut down cleanly. No model inference has run yet. Read the local status and check report before resuming; files or machine state can change after this checkpoint.
 
 ## This small step
 
-Provision the standalone Ollama runtime in the repository's ignored tools directory, reuse the already verified model cache, and verify local model discovery. Stop before inference or image-library changes. The subsequent step is a single CPU inference smoke test with memory measurements, followed by a small representative image benchmark.
+Completed: provision the standalone Ollama runtime in the repository's ignored tools directory, reuse the verified model cache, and verify local model discovery. This step stopped before inference or image-library changes. The subsequent step is a single CPU inference smoke test with memory measurements, followed by a small representative image benchmark.
 
 The standalone distribution supports embedding the CLI in another application. This setup uses a temporary loopback server with its own profile; it does not install the desktop tray app, a global service, or a startup entry. [Official Windows distribution](https://docs.ollama.com/windows).
 
@@ -39,7 +39,7 @@ Optional parameters are `-RuntimePath`, `-ModelDirectory`, and `-Port` (default 
 4. Calls only local metadata APIs, verifies the expected model digest and declared vision capability, and confirms no model is loaded. HTTP proxy use is disabled for those loopback calls.
 5. Saves a private report and shuts down its own server in `finally`. It does not stop existing Ollama services.
 
-This check does **not** establish CPU inference support, image decoding, tag accuracy, refusal behavior, or suitability for 16 GB shared RAM. Check current available memory before the inference step. Keep [artistic-nudity/NSFW compatibility](local-ai-content-compatibility.md) in the subsequent real-image benchmark.
+This check does **not** establish CPU inference support, image decoding, tag accuracy, refusal behavior, or suitability for 16 GB shared RAM. Check current available memory before inference; an earlier reading is not a memory reservation. Keep [artistic-nudity/NSFW compatibility](local-ai-content-compatibility.md) in the subsequent real-image benchmark.
 
 ## Next bounded step after successful setup
 

@@ -16,6 +16,6 @@ For image-library operations, use the `token_art_tagger` MCP tools when availabl
 
 Keep image paths, private manifests, model files, runtime profiles, credentials, network settings and locally generated agent configuration out of commits. Reuse cached files, resume partial downloads and verify checksums. Follow the current operator's download authorization and keep downloads scoped to the selected setup.
 
-The first Qwen3-VL 2B model is already downloaded and checksum-verified in the private local cache. Read `docs/model-download-routing.md` before setup or another download. Recheck live TUN state and the actual redirected endpoints; this machine's successful direct route is not a permanent guarantee or permission to fall back to a proxy.
+Before provisioning, inspect the private local setup status and reuse the selected model cache if verified. See `docs/model-download-routing.md` and `docs/local-ai-runtime-setup.md`. Any direct-routing claim requires live route and redirected-endpoint verification.
 
 Continue local AI work in small, checkpointed steps. Read `docs/local-ai-runtime-setup.md` and the private setup status before repeating runtime downloads or launching another worker. Runtime discovery is distinct from inference and accuracy validation; do not treat a downloaded archive or a prepared script as a passed runtime test.

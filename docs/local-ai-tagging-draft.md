@@ -1,6 +1,5 @@
 # Local AI tagging implementation draft
 
-Prepared 2026-10-21; revised 2026-10-22 for the user's 16 GB shared-RAM baseline. The first Qwen3-VL 2B model has now been [provisioned and checksum-verified](model-download-routing.md). Runtime setup has a [checkpointed background job and repeatable discovery check](local-ai-runtime-setup.md); check its local result before claiming installation success. Inference and accuracy benchmarks remain outstanding. The filename inventory and the [MCP/CLI app integration](agent-integration.md) are implemented.
 
 Development branch: `codex/local-ai-tagging`, based on `master`.
 
@@ -22,6 +21,7 @@ This is feasible enough to justify a small benchmark first. Neither accuracy nor
 - Support both tagging the untagged backlog and auditing existing tags. An AI disagreement with an authoritative filename is a separate suggestion and must not silently replace the original tag or become a training label.
 - Caster cues: wizard clothing tends toward robes and hats; cleric clothing may be white and resemble Roman togas; druid clothing is more plant/nature themed. Treat these as soft cues alongside trusted examples, not universal rules.
 - The user identified **wings, and possibly hooves**, as major distinguishing features. The exact category pairing and direction were not specified; preserve these as features to inspect without inventing a deterministic race rule.
+- Provision only the selected setup under the current operator's download authorization. Reuse verified caches, resume partial transfers and verify checksums. Keep network configuration and transfer evidence private.
 - Minimize confirmation work. An initial implementation using the existing batch rename confirmation is acceptable for simplicity; avoid requiring a separate click for every image. More autonomous renaming is a later decision after reliability is measured.
 
 Unanswered details are collected at the end; they do not block branch preparation or the software design.
@@ -157,6 +157,7 @@ Store evidence and raw scores separately from any calibrated score. Keep previou
 
 For GIFs and animated WebP, use representative frames only after reliable decoding is available. Otherwise label the limitation and send the item to review. Preserve aspect ratio and handle transparency predictably; preprocessing must not crop away a weapon or other decisive detail. Decode failures become explicit job errors rather than tag guesses.
 
+Local execution has no per-image hosted API fee, though it uses electricity, disk space, and GPU time. Download during setup under the user's current download authorization, then support offline operation. Begin with one candidate rather than downloading the whole comparison set at once. Configure Ollama's local-only mode and reject cloud model selections; loopback alone does not establish that the chosen model is local. [Ollama local-only configuration](https://github.com/ollama/ollama/blob/main/docs/faq.mdx).
 
 ## Delivery sequence and acceptance checks
 
@@ -164,7 +165,7 @@ The next concrete deliverable is a **resumable local benchmark runner and report
 
 1. Verify image decoding (especially the 101 backlog WebP files), stream full content hashes, and identify duplicate/variant groups. Use existing MCP/CLI tools for app inspection rather than duplicating filename parsing. Keep private per-image results outside Git.
 2. Add the local provider, strict output validator, disk checkpoints, resource sampling, and one-request queue. Save benchmark predictions separately; this phase must not call `update_tags` or rename files. Unit and fixture checks can proceed before model downloads.
-3. The first candidate is now downloaded and checksum-verified; reuse that cache. Set up the inference runtime after separately verifying any binary-download endpoints. Run a roughly 30-50-image feasibility set to check decoding, schema output, cold-load/inference memory, CPU latency, and pause/resume. Include the artistic-nudity and NSFW challenge cases in the [content-compatibility protocol](local-ai-content-compatibility.md), recording refusals separately from uncertain tags. This small set cannot establish automatic-acceptance precision.
+3. The first candidate is now downloaded and checksum-verified; reuse that cache. Complete the [pinned runtime setup](local-ai-runtime-setup.md) under the updated download authorization, then run one bounded CPU vision smoke test. Run a roughly 30-50-image feasibility set to check decoding, schema output, cold-load/inference memory, CPU latency, and pause/resume. Include the artistic-nudity and NSFW challenge cases in the [content-compatibility protocol](local-ai-content-compatibility.md), recording refusals separately from uncertain tags. This small set cannot establish automatic-acceptance precision.
 4. If feasible, run the larger evaluation below with fixed duplicate-safe splits. Compare against authoritative filenames hidden from the model. Validate the baseline on 16 GB hardware under foreground load; a CPU run or memory limit on the 32 GB development machine is useful preliminary evidence, not a substitute for that test.
 5. Choose the smallest candidate that meets both the measured resource policy and useful conservative accuracy. Then add the background suggestions/review workflow. If no candidate qualifies, preserve review-only output and report the shortfall instead of increasing memory requirements silently.
 
@@ -192,3 +193,4 @@ Focused implementation checks should cover invalid tags, role/style conflicts, g
 4. Specific CPU and operating-system details of additional target machines. Default to the 16 GB shared-RAM profile and optional GPU; slower unattended background work is accepted, subject to memory and responsiveness checks.
 5. Provisioning on additional machines requires a fresh route check and current download authorization; see the [download guide](model-download-routing.md).
 
+Proceed with the current taxonomy, local-only inference, the 16 GB shared-RAM target, conservative partial acceptance, separate audits of existing tags, preserved human labels, and a single batch rename confirmation in the first version. Build the benchmark before a full-library tagging run. Keep installation/downloads within the user's current authorization and verify their integrity.

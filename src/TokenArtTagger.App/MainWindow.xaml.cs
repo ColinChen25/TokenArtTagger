@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using TokenArtTagger.Core;
+using TokenArtTagger.Automation;
 using TokenArtTagger.App.ViewModels;
 using ShapeRectangle = System.Windows.Shapes.Rectangle;
 
@@ -29,12 +30,28 @@ public partial class MainWindow : Window
     private double _inspectorPanStartY;
     private CancellationTokenSource? _resizeQuietCancellation;
     private bool _isResizing;
+    private AgentPipeServer? _agentServer;
+    private bool _closingForSave;
+    private bool _closeReady;
 
     public MainWindow()
     {
         InitializeComponent();
         ViewModel.DebugLog = App.DebugLog;
         ViewModel.RequestBucketSelectionAction += HandleBucketSelectionAction;
+        ViewModel.RequestAgentSelection += images =>
+        {
+            MainTabs.SelectedIndex = 0;
+            LibraryList.SelectedItems.Clear();
+            foreach (var image in images) LibraryList.SelectedItems.Add(image);
+            if (images.Count > 0) LibraryList.ScrollIntoView(images[0]);
+        };
+        try
+        {
+            _agentServer = new AgentPipeServer((request, token) => Dispatcher.InvokeAsync(() => ViewModel.HandleAgentRequestAsync(request, token)).Task.Unwrap());
+            _ = ObserveAgentServerAsync(_agentServer);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { ViewModel.AgentConnectionFailed(); }
         App.DebugLog.Write("MainWindowConstructed", CurrentMode(), SelectedSummary());
     }
 
@@ -70,9 +87,42 @@ public partial class MainWindow : Window
         ViewModel.ShowInfo($"Debug log: {App.DebugLog.LogFilePath}");
     }
 
-    private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        App.DebugLog.Write("MainWindowClosing", CurrentMode(), SelectedSummary());
+        if (_closeReady)
+        {
+            _agentServer?.Dispose();
+            App.DebugLog.Write("MainWindowClosing", CurrentMode(), SelectedSummary());
+            return;
+        }
+        e.Cancel = true;
+        if (_closingForSave) return;
+        if (!ViewModel.IsWorkspaceAvailable)
+        {
+            ViewModel.ShowWarning("Wait for the current operation to finish, or cancel the preview, before closing.");
+            return;
+        }
+        _closingForSave = true;
+        var enabled = ViewModel.AgentAccessEnabled;
+        ViewModel.AgentAccessEnabled = false;
+        try
+        {
+            await ViewModel.FlushTemporaryTagsAsync();
+            _closeReady = true;
+            Close();
+        }
+        catch (Exception ex)
+        {
+            _closingForSave = false;
+            ViewModel.AgentAccessEnabled = enabled;
+            ViewModel.ShowWarning($"Cannot close while temporary tags are unsaved: {ex.Message}");
+        }
+    }
+
+    private async Task ObserveAgentServerAsync(AgentPipeServer server)
+    {
+        try { await server.Completion; }
+        catch { ViewModel.AgentConnectionFailed(); }
     }
 
     private void ImageList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -479,6 +529,7 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (!ViewModel.IsWorkspaceAvailable) return;
         using var logScope = App.DebugLog.Enter("WindowPreviewKeyDown", CurrentMode(), SelectedSummary(), new Dictionary<string, string?>
         {
             ["key"] = e.Key.ToString(),

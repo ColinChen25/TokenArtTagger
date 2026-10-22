@@ -7,8 +7,7 @@ public static class UndoLogService
     public static string DefaultUndoLogFolder()
     {
         return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TokenArtTagger",
+            AppDataPaths.Root,
             "UndoLogs");
     }
 

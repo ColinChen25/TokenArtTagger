@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TokenArtTagger.Core\TokenArtTagger.Core.csproj" />
+    <ProjectReference Include="..\..\src\TokenArtTagger.Automation\TokenArtTagger.Automation.csproj" />
   </ItemGroup>
 
   <ItemGroup>

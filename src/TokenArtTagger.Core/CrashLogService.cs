@@ -7,8 +7,7 @@ public static partial class CrashLogService
     public static string DefaultLogFolder()
     {
         return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TokenArtTagger",
+            AppDataPaths.Root,
             "Logs");
     }
 

@@ -9,7 +9,7 @@ using WinForms = System.Windows.Forms;
 
 namespace TokenArtTagger.App.ViewModels;
 
-public sealed class MainViewModel : ViewModelBase
+public sealed partial class MainViewModel : ViewModelBase
 {
     private readonly ThumbnailService _thumbnailService = new();
     private readonly WorkInProgressTagStore _workInProgressStore = WorkInProgressTagStore.CreateDefault();
@@ -284,8 +284,11 @@ public sealed class MainViewModel : ViewModelBase
 
     public RelayCommand SelectUntaggedBucketCommand { get; }
 
-    public async Task ScanAsync()
+    public Task ScanAsync() => RunWorkspaceOperationAsync(ScanCoreAsync);
+
+    private async Task ScanCoreAsync()
     {
+        await SaveWorkInProgressAsync();
         using var logScope = DebugLog?.Enter("ScanAsync", selected: SelectionSummary(), details: new Dictionary<string, string?>
         {
             ["folderName"] = DebugEventLogger.SafeNameFromPath(FolderPath)
@@ -301,7 +304,10 @@ public sealed class MainViewModel : ViewModelBase
         _bucketWorkingSession = null;
         _thumbnailService.ClearMemory();
 
-        var result = await FileScanner.ScanAsync(FolderPath);
+        var result = await FileScanner.ScanAsync(FolderPath, _scanRecursive, _scanExclusions, _agentOperationToken);
+        _scanErrors = result.Errors;
+        _scannedRoot = Path.GetFullPath(FolderPath);
+        _scanGeneration = Guid.NewGuid().ToString("N");
         var workInProgress = await LoadWorkInProgressMapAsync();
         foreach (var scannedItem in result.Items.OrderBy(item => item.FileName, StringComparer.OrdinalIgnoreCase))
         {
@@ -398,7 +404,9 @@ public sealed class MainViewModel : ViewModelBase
         System.Windows.Application.Current.Dispatcher.Invoke(() => item.Thumbnail = thumbnail);
     }
 
-    private async Task PreviewRenameAsync(RenamePreviewScope scope)
+    private Task PreviewRenameAsync(RenamePreviewScope scope) => RunWorkspaceOperationAsync(() => PreviewRenameCoreAsync(scope));
+
+    private async Task PreviewRenameCoreAsync(RenamePreviewScope scope)
     {
         using var logScope = DebugLog?.Enter("PreviewRename", selected: SelectionSummary(), details: new Dictionary<string, string?>
         {
@@ -425,7 +433,7 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         _previewCancellation?.Dispose();
-        _previewCancellation = new CancellationTokenSource();
+        _previewCancellation = CancellationTokenSource.CreateLinkedTokenSource(_agentOperationToken);
         CancelPreviewCommand.RaiseCanExecuteChanged();
         var progress = new Progress<RenamePreviewProgress>(step =>
         {
@@ -487,7 +495,9 @@ public sealed class MainViewModel : ViewModelBase
         RaiseCommandStates();
     }
 
-    private async Task RenameSelectedAsync()
+    private Task RenameSelectedAsync() => RunWorkspaceOperationAsync(RenameSelectedCoreAsync);
+
+    private async Task RenameSelectedCoreAsync()
     {
         if (_lastPreview?.CanRename != true || _lastPreviewScope != RenamePreviewScope.Selected)
         {
@@ -706,12 +716,12 @@ public sealed class MainViewModel : ViewModelBase
         return message;
     }
 
-    private void UpdateAfterTagsChanged()
+    private void UpdateAfterTagsChanged(bool save = true)
     {
         using var logScope = DebugLog?.Enter("TagsChanged", selected: SelectionSummary());
         _lastPreview = null;
         _lastPreviewScope = null;
-        _ = SaveWorkInProgressAsync();
+        if (save) _ = SaveWorkInProgressWithWarningAsync();
         UpdateBucketPassCompletionStates();
         OnPropertyChanged(nameof(BucketWorkingSetSummary));
         NotifyLibrarySelectionDetailsChanged();
@@ -856,7 +866,16 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task SaveWorkInProgressAsync()
+    private Task _pendingSave = Task.CompletedTask;
+
+    private async Task SaveWorkInProgressWithWarningAsync()
+    {
+        try { await SaveWorkInProgressAsync(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        { ShowWarning($"Temporary tags could not be saved: {ex.Message}"); }
+    }
+
+    private Task SaveWorkInProgressAsync()
     {
         var records = new List<WorkInProgressTagRecord>();
         foreach (var item in Items.Where(item => item.IsDirty))
@@ -871,14 +890,15 @@ public sealed class MainViewModel : ViewModelBase
             }
         }
 
-        if (records.Count == 0)
-        {
-            await _workInProgressStore.ClearAsync();
-        }
-        else
-        {
-            await _workInProgressStore.SaveAsync(records);
-        }
+        var paths = Items.Select(item => item.FullPath).ToArray();
+        var previous = _pendingSave;
+        return _pendingSave = SaveQueuedAsync(previous, records, paths);
+    }
+
+    private async Task SaveQueuedAsync(Task previous, IReadOnlyList<WorkInProgressTagRecord> records, string[] paths)
+    {
+        try { await previous; } catch { /* Retry the newest snapshot after a failed write. */ }
+        await _workInProgressStore.MergeAsync(records, paths);
     }
 
     private void BrowseFolder()
@@ -893,6 +913,8 @@ public sealed class MainViewModel : ViewModelBase
 
         if (dialog.ShowDialog() == WinForms.DialogResult.OK)
         {
+            _scanRecursive = true;
+            _scanExclusions = [];
             FolderPath = dialog.SelectedPath;
             DebugLog?.Write("FolderSelected", details: new Dictionary<string, string?>
             {

@@ -23,6 +23,8 @@ Use a copied test folder first, for example `C:\Path\To\Your\ImageLibrary`.
 
 ## Workflows
 
+Local agents can control the running app through MCP or a stable JSON command interface. See [Agent integration](docs/agent-integration.md) for setup, available tools, and examples. Scans, image inspection, tag edits, and rename previews share the desktop app's live state.
+
 - `Library`: select individual images, apply tags, preview selected or changed items, then confirm `Rename Selected`.
 - `Bucket Tagging`: choose a pass such as Gender, Role, Caster Style, or Race; assign selected thumbnails to virtual buckets; then apply a default bucket to the remaining images on the current page.
 

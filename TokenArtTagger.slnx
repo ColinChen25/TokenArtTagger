@@ -2,6 +2,8 @@
   <Folder Name="/src/">
     <Project Path="src/TokenArtTagger.App/TokenArtTagger.App.csproj" />
     <Project Path="src/TokenArtTagger.Core/TokenArtTagger.Core.csproj" />
+    <Project Path="src/TokenArtTagger.Automation/TokenArtTagger.Automation.csproj" />
+    <Project Path="src/TokenArtTagger.Agent/TokenArtTagger.Agent.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/TokenArtTagger.Tests/TokenArtTagger.Tests.csproj" />

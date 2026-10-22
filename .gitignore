@@ -45,6 +45,7 @@ coverage.*
 *undo-log*.json
 appsettings.Local.json
 user-settings.json
+.codex/config.toml
 work-in-progress-tags.json
 
 # Accidental image-library files

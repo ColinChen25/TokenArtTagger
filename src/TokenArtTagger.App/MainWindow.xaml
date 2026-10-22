@@ -27,6 +27,7 @@
             <Setter Property="Margin" Value="0,0,0,8" />
         </Style>
         <Style x:Key="ToolButton" TargetType="Button">
+            <Setter Property="IsEnabled" Value="{Binding IsWorkspaceAvailable}" />
             <Setter Property="MinHeight" Value="32" />
             <Setter Property="Padding" Value="12,5" />
             <Setter Property="Margin" Value="4,0,0,0" />
@@ -258,9 +259,9 @@
             <Button Grid.Column="0" Style="{StaticResource ToolButton}" Margin="0,0,8,0"
                     Content="Choose Folder"
                     Command="{Binding BrowseCommand}" />
-            <TextBox Grid.Column="1" MinHeight="32" VerticalContentAlignment="Center"
+            <TextBox Grid.Column="1" MinHeight="32" VerticalContentAlignment="Center" IsEnabled="{Binding IsWorkspaceAvailable}"
                      Text="{Binding FolderPath, UpdateSourceTrigger=PropertyChanged}" />
-            <Grid Grid.Column="2" Margin="8,0,0,0">
+            <Grid Grid.Column="2" Margin="8,0,0,0" IsEnabled="{Binding IsWorkspaceAvailable}">
                 <TextBox MinHeight="32" VerticalContentAlignment="Center"
                          Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" />
                 <TextBlock Text="Search filenames/tags..." Margin="8,0,0,0"
@@ -273,14 +274,14 @@
                 <Button Style="{StaticResource ScanButton}" Content="Scan Folder" Command="{Binding ScanCommand}" Click="ScanFolder_Click" />
                 <Button Style="{StaticResource ToolButton}" Content="Preview Selected" Command="{Binding PreviewRenameCommand}" />
                 <Button Style="{StaticResource ToolButton}" Content="Preview Changed" Command="{Binding PreviewChangedCommand}" />
-                <Button Style="{StaticResource ToolButton}" Content="Cancel Preview" Command="{Binding CancelPreviewCommand}" />
+                <Button Style="{StaticResource ToolButton}" Content="Cancel Preview" Command="{Binding CancelPreviewCommand}" IsEnabled="True" />
                 <Button Style="{StaticResource ToolButton}" Content="Rename Selected" Command="{Binding RenameSelectedCommand}"
                         ToolTip="{Binding RenameBlockReason}" />
                 <Button Style="{StaticResource ToolButton}" Content="Open Logs" Click="OpenLogsFolder_Click" />
             </StackPanel>
         </Grid>
 
-        <TabControl x:Name="MainTabs" Grid.Row="1" SelectionChanged="MainTabs_SelectionChanged">
+        <TabControl x:Name="MainTabs" Grid.Row="1" SelectionChanged="MainTabs_SelectionChanged" IsEnabled="{Binding IsWorkspaceAvailable}">
             <TabItem Header="Library">
                 <Grid Margin="0,10,0,0">
                     <Grid.ColumnDefinitions>
@@ -530,7 +531,13 @@
         </TabControl>
 
         <Border Grid.Row="2" Margin="0,12,0,0" Style="{StaticResource StatusBorder}" CornerRadius="6" Padding="10">
+            <StackPanel>
             <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                <CheckBox Content="Agent access" IsChecked="{Binding AgentAccessEnabled}" ToolTip="Allow local agents under this Windows account to inspect images and edit temporary tags. Rename confirmation remains here." />
+                <TextBlock Text="{Binding AgentStatus}" Margin="12,0,0,0" Foreground="#555555" />
+            </StackPanel>
+            </StackPanel>
         </Border>
     </Grid>
 </Window>

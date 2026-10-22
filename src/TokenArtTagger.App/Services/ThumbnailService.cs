@@ -15,8 +15,7 @@ public sealed class ThumbnailService
     public ThumbnailService()
     {
         _cacheFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "TokenArtTagger",
+            TokenArtTagger.Core.AppDataPaths.Root,
             "thumbnail-cache");
         Directory.CreateDirectory(_cacheFolder);
     }

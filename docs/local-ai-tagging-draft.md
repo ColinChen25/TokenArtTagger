@@ -1,6 +1,6 @@
 # Local AI tagging implementation draft
 
-Prepared 2026-10-21; revised 2026-10-22 for the user's 16 GB shared-RAM baseline. Local inference remains a proposal: no models installed or inference benchmark performed. The filename inventory and the [MCP/CLI app integration](agent-integration.md) are implemented.
+Prepared 2026-10-21; revised 2026-10-22 for the user's 16 GB shared-RAM baseline. The first Qwen3-VL 2B model has now been [provisioned and checksum-verified](model-download-routing.md); runtime setup and the inference benchmark remain outstanding. The filename inventory and the [MCP/CLI app integration](agent-integration.md) are implemented.
 
 Development branch: `codex/local-ai-tagging`, based on `master`.
 
@@ -163,6 +163,7 @@ The next concrete deliverable is a **resumable local benchmark runner and report
 
 1. Verify image decoding (especially the 101 backlog WebP files), stream full content hashes, and identify duplicate/variant groups. Use existing MCP/CLI tools for app inspection rather than duplicating filename parsing. Keep private per-image results outside Git.
 2. Add the local provider, strict output validator, disk checkpoints, resource sampling, and one-request queue. Save benchmark predictions separately; this phase must not call `update_tags` or rename files. Unit and fixture checks can proceed before model downloads.
+3. The first candidate is now downloaded and checksum-verified; reuse that cache. Set up the inference runtime after separately verifying any binary-download endpoints. Run a roughly 30-50-image feasibility set to check decoding, schema output, cold-load/inference memory, CPU latency, and pause/resume. This small set cannot establish automatic-acceptance precision.
 4. If feasible, run the larger evaluation below with fixed duplicate-safe splits. Compare against authoritative filenames hidden from the model. Validate the baseline on 16 GB hardware under foreground load; a CPU run or memory limit on the 32 GB development machine is useful preliminary evidence, not a substitute for that test.
 5. Choose the smallest candidate that meets both the measured resource policy and useful conservative accuracy. Then add the background suggestions/review workflow. If no candidate qualifies, preserve review-only output and report the shortfall instead of increasing memory requirements silently.
 

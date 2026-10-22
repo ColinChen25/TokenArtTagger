@@ -1,6 +1,6 @@
 # Local AI tagging implementation draft
 
-Prepared 2026-10-21; revised 2026-10-22 for the user's 16 GB shared-RAM baseline. The first Qwen3-VL 2B model has now been [provisioned and checksum-verified](model-download-routing.md); runtime setup and the inference benchmark remain outstanding. The filename inventory and the [MCP/CLI app integration](agent-integration.md) are implemented.
+Prepared 2026-10-21; revised 2026-10-22 for the user's 16 GB shared-RAM baseline. The first Qwen3-VL 2B model has now been [provisioned and checksum-verified](model-download-routing.md). Runtime setup has a [checkpointed background job and repeatable discovery check](local-ai-runtime-setup.md); check its local result before claiming installation success. Inference and accuracy benchmarks remain outstanding. The filename inventory and the [MCP/CLI app integration](agent-integration.md) are implemented.
 
 Development branch: `codex/local-ai-tagging`, based on `master`.
 

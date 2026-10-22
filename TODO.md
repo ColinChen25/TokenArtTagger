@@ -2,7 +2,7 @@
 
 ## Next AI milestone
 
-- Direct model download verified and first model cached; see [routing evidence](docs/model-download-routing.md). Next, set up the local inference runtime using separately verified direct downloads and reuse the cached model.
+- Direct model download verified and first model cached; see [routing evidence](docs/model-download-routing.md). The pinned runtime setup has a resumable background worker and a [setup checkpoint](docs/local-ai-runtime-setup.md); inspect its local status before continuing. Once installation and discovery pass, run one bounded CPU inference smoke test before building the image benchmark.
 - Build a resumable local-model benchmark using the existing MCP/CLI image access and authoritative filename labels. Keep outputs separate from current tags.
 - Include artistic nudity, minimal tribal outfits, and succubus imagery in model selection and evaluation. Measure refusals, unsupported guesses, and tag accuracy separately; use the neutral prompt and fallback criteria in [content compatibility](docs/local-ai-content-compatibility.md). This requirement is recorded, not yet runtime-tested.
 - Target 16 GB total shared RAM, CPU-only support, one image/model at a time, measured memory use, and pause/resume under memory pressure. Background speed is secondary to accuracy and foreground responsiveness.

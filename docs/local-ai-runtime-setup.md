@@ -1,10 +1,10 @@
 # Local runtime setup checkpoint
 
-Setup completed and live discovery verified **2026-10-23** on `codex/local-ai-tagging`. Ollama 0.40.8 is installed locally, all five cached Qwen model blobs passed full size/hash verification, and the runtime discovered the pinned model with vision capability. The temporary loopback server shut down cleanly. No model inference has run yet. Read the local status and check report before resuming; files or machine state can change after this checkpoint.
+Setup completed and live discovery verified **2026-10-23** on `codex/local-ai-tagging`. Ollama 0.40.8 is installed locally, all five cached Qwen model blobs passed full size/hash verification, and the runtime discovered the pinned model with vision capability. Subsequent synthetic and real-art CPU inference have now run; see [measured results](local-ai-results.md). The private setup status describes installation/discovery only. Read the latest benchmark status before resuming; files or machine state can change after this checkpoint.
 
 ## This small step
 
-Completed: provision the standalone Ollama runtime in the repository's ignored tools directory, reuse the verified model cache, and verify local model discovery. This step stopped before inference or image-library changes. The subsequent step is a single CPU inference smoke test with memory measurements, followed by a small representative image benchmark.
+Completed: provision the standalone Ollama runtime in the repository's ignored tools directory, reuse the verified model cache, and verify local model discovery. That setup step stopped before inference or image-library changes. The later CPU smoke test and development benchmark are documented below and in the results report.
 
 The standalone distribution supports embedding the CLI in another application. This setup uses a temporary loopback server with its own profile; it does not install the desktop tray app, a global service, or a startup entry. [Official Windows distribution](https://docs.ollama.com/windows).
 

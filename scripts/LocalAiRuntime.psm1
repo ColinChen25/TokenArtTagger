@@ -121,10 +121,28 @@ function Get-LocalAiSample($Runtime) {
     return $sample
 }
 
-function Invoke-LocalAiVision($Runtime, [string]$ImageBase64, [string]$Prompt, $Schema, [string]$StopFile, [int]$TimeoutSeconds = 600, [int]$MaxTokens = 256) {
+function New-AiVisionMessages([string]$ImageBase64, [string]$Prompt, [object[]]$Examples=@()) {
+    if($Examples.Count -gt 2){throw 'At most two reference images are allowed in the low-memory pilot.'}
+    $messages=New-Object Collections.Generic.List[object]
+    foreach($example in $Examples){
+        $messages.Add(@{role='user';content='Trusted reference artwork. The following assistant response contains its authoritative tags. This is not the target image.';images=@($example.imageBase64)})
+        $messages.Add(@{role='assistant';content=(ConvertTo-Json -InputObject @{tags=$example.tags;evidence='Trusted reference labels.';uncertainty=''} -Depth 5 -Compress)})
+    }
+    $messages.Add(@{role='user';content=$Prompt;images=@($ImageBase64)})
+    return ,($messages.ToArray())
+}
+
+function Assert-AiPromptBudget($PromptTokens, [int]$MaxTokens=256) {
+    if($null -eq $PromptTokens -or $PromptTokens -lt 1 -or $PromptTokens -gt (4096-$MaxTokens)){
+        throw 'context_budget: Prompt leaves insufficient space for the full bounded response; reduce references or prompt size and use a new run.'
+    }
+}
+
+function Invoke-LocalAiVision($Runtime, [string]$ImageBase64, [string]$Prompt, $Schema, [string]$StopFile, [int]$TimeoutSeconds = 600, [int]$MaxTokens = 256, [object[]]$Examples=@()) {
     $memory=Get-AiMemory
     if ($memory.AvailablePhysical -lt 8GB) { throw 'memory_pressure: Need 8 GiB available before admitting an image (4 GiB workload plus 4 GiB reserve).' }
-    $body=@{model=$Runtime.Model;stream=$false;keep_alive='2m';messages=@(@{role='user';content=$Prompt;images=@($ImageBase64)});format=$Schema;options=@{temperature=0;seed=42;num_ctx=4096;num_predict=$MaxTokens;num_thread=2;num_gpu=0}}
+    $messages=New-AiVisionMessages $ImageBase64 $Prompt $Examples
+    $body=@{model=$Runtime.Model;stream=$false;keep_alive='2m';messages=$messages;format=$Schema;options=@{temperature=0;seed=42;num_ctx=4096;num_predict=$MaxTokens;num_thread=2;num_gpu=0}}
     $cts=New-Object Threading.CancellationTokenSource
     $cts.CancelAfter([TimeSpan]::FromSeconds($TimeoutSeconds))
     $content=New-Object Net.Http.StringContent(($body | ConvertTo-Json -Depth 40 -Compress),[Text.Encoding]::UTF8,'application/json')
@@ -142,6 +160,7 @@ function Invoke-LocalAiVision($Runtime, [string]$ImageBase64, [string]$Prompt, $
         $text=$response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
         if (-not $response.IsSuccessStatusCode) { throw "Local runtime HTTP $([int]$response.StatusCode): $text" }
         $value=$text | ConvertFrom-Json
+        Assert-AiPromptBudget $value.prompt_eval_count $MaxTokens
         $loaded=Invoke-LocalAiMetadata $Runtime '/api/ps'
         $running=@($loaded.models | Where-Object { $_.name -eq $Runtime.Model -or $_.model -eq $Runtime.Model })
         if ($running.Count -ne 1 -or $running[0].size_vram -ne 0 -or $running[0].digest -ne $Runtime.Digest) { throw 'CPU-only pinned model execution could not be verified.' }
@@ -195,4 +214,4 @@ function Stop-LocalAiRuntime($Runtime) {
     if($cleanupErrors.Count){throw ('Runtime cleanup failed: '+($cleanupErrors -join '; '))}
 }
 
-Export-ModuleMember -Function Write-AiCheckpoint,Get-AiMemory,Start-LocalAiRuntime,Invoke-LocalAiMetadata,Invoke-LocalAiVision,Get-LocalAiSample,Clear-LocalAiModel,Stop-LocalAiRuntime
+Export-ModuleMember -Function Write-AiCheckpoint,Get-AiMemory,Start-LocalAiRuntime,Invoke-LocalAiMetadata,Invoke-LocalAiVision,Get-LocalAiSample,Clear-LocalAiModel,Stop-LocalAiRuntime,New-AiVisionMessages,Assert-AiPromptBudget

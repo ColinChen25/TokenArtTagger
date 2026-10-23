@@ -1,6 +1,6 @@
 # Local AI tagging implementation draft
 
-Prepared 2026-10-21; updated 2026-10-23. The first Qwen3-VL 2B model was [provisioned and checksum-verified](model-download-routing.md). [Runtime setup and synthetic CPU vision inference](local-ai-runtime-setup.md) have passed. A [resumable real-image benchmark with a local review page](local-ai-benchmark.md) is implemented and under evaluation. The 16 GB shared-RAM baseline remains a target requiring hardware validation. The filename inventory and [MCP/CLI app integration](agent-integration.md) are implemented; automatic tagging is not yet enabled.
+Prepared 2026-10-21; updated 2026-10-23. The first Qwen3-VL 2B model was [provisioned and checksum-verified](model-download-routing.md). [Runtime setup and synthetic CPU vision inference](local-ai-runtime-setup.md) have passed. A [resumable real-image benchmark with a local review page](local-ai-benchmark.md) is implemented: the 36-image baseline completed, matching all four tags on 12 of 32 labeled examples. See [measured results](local-ai-results.md). The 16 GB shared-RAM baseline remains a target requiring hardware validation. The filename inventory and [MCP/CLI app integration](agent-integration.md) are implemented; automatic tagging is not yet enabled.
 
 Development branch: `codex/local-ai-tagging`, based on `master`.
 
@@ -8,14 +8,14 @@ Configure source folders in the private local dataset manifest. Use the [invento
 
 **Recommendation:** add a local vision model that predicts the existing controlled tags, then improve it with a searchable collection of human-tagged examples. Automatically stage only sufficiently reliable fields, and send uncertain fields to the existing manual workflow. Keep filename changes behind the existing preview and confirmation.
 
-This is feasible enough to justify a small benchmark first. Neither accuracy nor throughput on this image collection has been measured. The first success metric should be time saved at an acceptable error rate, rather than the percentage of images receiving some prediction.
+The first benchmark demonstrates CPU inference with bounded sampled memory, but its tagging accuracy is insufficient for unattended use. Improve interpretation using trusted examples and measure again before enabling automatic acceptance. The success metric remains time saved at an acceptable error rate, rather than the percentage of images receiving some prediction.
 
 ## Confirmed requirements
 
 - Support collections mixing TokenArtTagger filenames, older manual filename formats and untagged images.
 - **Filename tags are authoritative.** Import these as trusted labels after verifying the parser maps the old and new formats correctly. Unsupported or ambiguous filename syntax is an import issue, not evidence that the user's tags are wrong.
 - Art styles are mixed. Evaluate performance across styles rather than optimizing solely for one illustration domain.
-- Artistic nudity and other NSFW fantasy elements must remain taggable, including minimal tribal outfits and succubus imagery. Do not block images based on an NSFW score or remove visual evidence before classification. Evaluate model refusals and exposure-related tagging errors explicitly; see [content compatibility, prompt, and benchmark criteria](local-ai-content-compatibility.md). The cached Qwen model has not yet been tested against this requirement.
+- Artistic nudity and other NSFW fantasy elements must remain taggable, including minimal tribal outfits and succubus imagery. Do not block images based on an NSFW score or remove visual evidence before classification. Evaluate model refusals and exposure-related tagging errors explicitly; see [content compatibility, prompt, and benchmark criteria](local-ai-content-compatibility.md). The initial Qwen benchmark includes a few visually verified examples; broader compatibility is not yet established.
 - Deployment baseline: **16 GB total system RAM shared with other running programs**, with CPU-only operation as a design requirement and a discrete GPU optional. The development machine's discrete GPU and additional RAM must not become minimum requirements. Installed RAM is not a usable-memory budget; admission and pause decisions must use current available memory and measured workload peaks.
 - Slower background processing is acceptable. Prefer accuracy, low memory use, foreground responsiveness, and reliable pause/resume over throughput. Do not substitute confident guesses or repeated low-quality predictions for reliable tagging merely to use a smaller model.
 - Favor **fewer mistakes**, accepting lower automatic coverage. The earlier suggested 98% field precision is not an accepted tolerance; choose a more conservative policy from measured results and leave unsupported cases unresolved.
@@ -107,7 +107,7 @@ Role and style must be evaluated together where needed. A visible axe does not r
 
 Begin with **retrieval**, then consider **training**:
 
-- Import authoritative filename labels as trusted examples, retaining the original filename and parser version. Inventory old filename variants and verify normalization before importing; route unrecognized syntax to an import report. New AI-only predictions remain separate from this trusted collection.
+- Use the [completed export of 1,469 authoritative filename labels](local-ai-dataset.md) as the source for trusted examples, retaining source paths, full hashes, revisions and the app schema. It includes the tagged subfolder and three tagged images in its parent. Route unrecognized syntax to an import report. New AI-only predictions remain separate from this trusted collection.
 - Compute an embedding per image and retrieve roughly 3–5 diverse relevant examples. Use similarity for search, not as a probability that a tag is correct.
 - Present example images with their confirmed labels to the vision model when testing whether examples help. Labels alone cannot teach a visual correspondence. Under the low-memory profile, retrieve candidates on disk but initially send only one or two examples; do not load all retrieved images into one prompt by default.
 - Include contrasting examples for confusing categories, not just several near-identical pictures. Avoid allowing one duplicated illustration or art style to dominate the examples.
@@ -162,7 +162,7 @@ Local execution has no per-image hosted API fee, though it uses electricity, dis
 
 ## Delivery sequence and acceptance checks
 
-The next concrete deliverable is a **resumable local benchmark runner and report**, controlled through the app's existing integration where practical. Complete it in this order:
+The **resumable local benchmark runner and report** are implemented, and the first 36-image baseline is complete. The sequence below describes the overall milestones; the current experiment is collection-specific visual references, followed by disjoint evaluation if the measured improvement warrants it.
 
 1. Verify image decoding (especially the 101 backlog WebP files), stream full content hashes, and identify duplicate/variant groups. Use existing MCP/CLI tools for app inspection rather than duplicating filename parsing. Keep private per-image results outside Git.
 2. Add the local provider, strict output validator, disk checkpoints, resource sampling, and one-request queue. Save benchmark predictions separately; this phase must not call `update_tags` or rename files. Unit and fixture checks can proceed before model downloads.
@@ -172,7 +172,7 @@ The next concrete deliverable is a **resumable local benchmark runner and report
 
 | Phase | Deliverable | Evidence needed to proceed |
 |---|---|---|
-| 1. Dataset audit and benchmark | Filename inventory complete; next: duplicate/decoder audit, low-memory local runner, reproducible comparison | Useful conservative predictions, bounded peak RAM, responsive foreground apps, and recoverable interrupted jobs on the 16 GB target |
+| 1. Dataset audit and benchmark | Filename/full-hash inventory and CPU baseline complete; next: variant/decoder audit and improved accuracy | Useful conservative predictions, bounded peak RAM, responsive foreground apps, and recoverable interrupted jobs on the 16 GB target |
 | 2. Suggestion MVP | Local model connection, background queue, saved proposals, review UI | No loss of manual edits; valid schema; cancel/resume and decoder failures handled |
 | 3. Personalization | Confirmed-example retrieval; optional frozen-embedding classifiers | Improvement over the no-example baseline on held-out images |
 | 4. Selective automation | Per-category acceptance policies, automatic partial tags, batch revert, audit sampling | Sufficient precision and useful coverage, measured separately for fields and complete images |
@@ -188,7 +188,7 @@ Focused implementation checks should cover invalid tags, role/style conflicts, g
 
 ## Remaining details for later
 
-1. Source paths and filename import coverage are now resolved. The tagged folder is nested inside the backlog root and must be excluded from the backlog enumeration. Content-based duplicate grouping and image decoding remain to be checked before assigning evaluation splits.
+1. Source paths and filename import coverage are now resolved. Use the `untagged` filename-state filter for backlog enumeration; the nested tagged folder may also be excluded from scanning. The full-hash audit found no exact duplicates among tagged images. Related variants and remaining formats still need checking before assigning evaluation splits.
 2. Which categories wings and hooves distinguish, and which tag each feature suggests. Caster clothing guidance is recorded above; other ambiguous race/weapon rules can be learned from the labeled examples where sufficiently consistent.
 3. Whether unresolved gender/race should remain blank or eventually use a new unknown tag. Default: keep them blank without changing the filename schema.
 4. Specific CPU and operating-system details of additional target machines. Default to the 16 GB shared-RAM profile and optional GPU; slower unattended background work is accepted, subject to memory and responsiveness checks.

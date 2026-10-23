@@ -4,6 +4,8 @@ The repository now has a working local vision benchmark, separate from the deskt
 
 The benchmark is a diagnostic prototype. A complete, schema-valid answer is not a calibrated or approved prediction. All suggestions remain separate from authoritative filename tags. The production desktop AI workflow and automatic acceptance policy are still pending measured accuracy.
 
+The first 36-image baseline and a paired schema experiment are recorded in [measured results](local-ai-results.md). The trusted filename collection can be exported separately with the [dataset workflow](local-ai-dataset.md).
+
 ## Run or resume
 
 First read [runtime setup](local-ai-runtime-setup.md), confirm the private setup checkpoint is complete, and ensure no earlier worker is active. The installed runtime is Ollama 0.40.8 and the model is the pinned `qwen3-vl:2b-instruct-q4_K_M` cache. These scripts intentionally fail when either is missing instead of downloading it.
@@ -21,6 +23,18 @@ Run the same command to resume. `-MaxItems 2` provides a short initial checkpoin
 
 The deterministic sample covers rare races first, then missing weapon/caster styles, then fills remaining slots by a stable ordering. Untagged examples are selected separately by filename recognition state. This is intentionally a difficult coverage sample, **not a random estimate of whole-library accuracy**. It is a development set, not a held-out test. Exact duplicate content in the selected sample stops scoring; related variants and duplicates across the full library still need grouping before a formal evaluation.
 
+`-ConstrainRoleStyle` additionally encodes role/style dependencies into the generation schema. It changes the settings fingerprint, so use a new output directory. The independent validator still checks every response. Valid combinations do not establish visual correctness.
+
+After both runs complete with verified cleanup, compare the shared content using:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Compare-LocalAiBenchmark.ps1 `
+  -BaselineDirectory .cache/local-ai-benchmark/run-01 `
+  -CandidateDirectory .cache/local-ai-benchmark/run-02
+```
+
+This writes a private `comparison.json` in the candidate directory. It matches full hashes, rejects duplicate identities and conflicting source labels, retains failed predictions, and reports the unmatched counts. Accuracy is recalculated on the same paired images, so a small rare-class subset is not compared against the baseline's entire sample.
+
 ```powershell
 # Stop the current request, reject its unfinished result, unload, and save status.
 New-Item .cache/local-ai-benchmark/run-01/STOP -ItemType File
@@ -30,6 +44,24 @@ Remove-Item -LiteralPath .cache/local-ai-benchmark/run-01/STOP
 ```
 
 A stopped or memory-paused run returns a nonzero exit code with `status: paused`. It does not automatically restart itself. A file lock prevents two writers against one run directory; the dedicated runtime port also prevents concurrent benchmark servers. Do not remove the lock file to bypass a live worker. An OS/process kill may leave `status: running`; inspect the recorded process identities before restarting.
+
+## Fixed-reference development experiment
+
+`-ReferencePlanFile` accepts a private JSON file under `.cache` with `targets` and `references` arrays of absolute source paths already in the app scan. Set `-TaggedCount` to the target count and `-UntaggedCount 0`. One or two references are supported; use a new output directory. Every image must have authoritative filename labels. For example, the JSON shape is `{ "targets": ["TARGET_PATH"], "references": ["REFERENCE_PATH"] }`; substitute actual scanned paths in the private file, not in tracked documentation.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Invoke-LocalAiBenchmark.ps1 `
+  -Instance 12345 -OutputDirectory .cache/local-ai-benchmark/reference-study `
+  -TaggedCount 8 -UntaggedCount 0 -ReferencePlanFile .cache/reference-plan.json
+```
+
+This is a fixed-example pilot, not an automatic retrieval system or weight training. Choose the reference set before examining target answers, exclude the full evaluation pool, and inspect for related artwork. The same references are supplied to every target. Do not pick each reference using the target's hidden authoritative class. Target selection for a declared development challenge may deliberately cover known classes, but must not be reported as random population accuracy.
+
+Reference pixels are decoded through MCP at a 384-pixel maximum dimension and sent in distinct user messages followed by their trusted four-field labels. The final user message contains the target image and classification prompt; target labels and all source paths remain outside model messages. The runner rejects duplicate paths/content between references and targets, includes reference hashes/labels/preprocessing in cache identity, and verifies reference revisions and hashes after inference. It does not detect near duplicates automatically.
+
+The context remains 4,096 tokens. A request whose reported prompt token count cannot reserve the full 256-token response is rejected, including during cache reuse. Image token usage is not reliably inferred from the thumbnail's dimensions: the first two-reference trial used 3,846 prompt tokens, leaving only 250. That trial completed one response without runtime truncation, but the subsequent stricter budget guard excludes it from the paired study. The next pilot uses one reference. A larger context is not selected automatically.
+
+The review exporter displays the trusted references separately from target predictions. They are never included in accuracy denominators. Keep the same target preprocessing, prompt and schema where practical when comparing with a no-reference run, and report the experiment's additional message/prompt changes explicitly.
 
 ## Local review page
 
@@ -59,7 +91,7 @@ The optional private `content-annotations.json` contains an array of `{sha256, g
 
 ## CPU and memory behavior
 
-The runtime is app-owned, bound to `127.0.0.1`, local-only, and below normal process priority. Inference uses two CPU threads, zero GPU layers, 4,096 context tokens, a 256-token output bound, and one image/request. The manifest and all five blobs are checksum-verified before starting. `/api/ps` must report the pinned digest and zero VRAM use. The model unloads after every image; this trades a little startup time for bounded worker/cache retention.
+The runtime is app-owned, bound to `127.0.0.1`, local-only, and below normal process priority. Inference uses two CPU threads, zero GPU layers, 4,096 context tokens, a 256-token output bound, and one target/request (plus bounded references only in the explicit reference experiment). The manifest and all five blobs are checksum-verified before starting. `/api/ps` must report the pinned digest and zero VRAM use. The model unloads after every target; this trades a little startup time for bounded worker/cache retention.
 
 Memory samples include the Ollama server, its **llama-server.exe** worker, the PowerShell harness, the local MCP bridge and the WPF app. The app's already-resident memory is recorded separately before the first decode. Both combined working set and incremental tagging workload are reported; existing app memory is never silently omitted from the combined measurement.
 

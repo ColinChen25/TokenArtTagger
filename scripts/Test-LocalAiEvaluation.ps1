@@ -1,6 +1,7 @@
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'LocalAiEvaluation.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'LocalAiMcp.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'LocalAiRuntime.psm1') -Force
 $repo=Split-Path $PSScriptRoot -Parent
 # The schema comes from the actual bridge, not a duplicate tag vocabulary.
 $output='{}' | & (Join-Path $repo '.tools\dotnet\dotnet.exe') (Join-Path $repo 'src\TokenArtTagger.Agent\bin\Debug\net10.0\TokenArtTagger.Agent.dll') --call tag_schema
@@ -26,6 +27,19 @@ Check ((Result ($generic.Replace('"weaponOrStyle":null','"weaponOrStyle":"bow"')
 Check ((Result ($complete.Replace('"race":"human"','"race":"human","extra":1'))).outcome -eq 'invalid_output') 'Extra tag fields accepted.'
 Check ((Result ($complete.Replace('"gender":"female",',''))).outcome -eq 'invalid_output') 'Missing field accepted.'
 $good=Result $complete
+$messages=New-AiVisionMessages 'TARGET_PIXELS' 'Classify target.' @(@{imageBase64='REFERENCE_PIXELS';tags=$good.prediction.tags;path='PRIVATE_REFERENCE_PATH'})
+Check ($messages.Count -eq 3 -and $messages[0].images[0] -eq 'REFERENCE_PIXELS' -and $messages[1].role -eq 'assistant' -and $messages[2].images[0] -eq 'TARGET_PIXELS') 'References and target are not distinct ordered visual messages.'
+Check (($messages | ConvertTo-Json -Depth 10 -Compress) -notmatch 'PRIVATE_REFERENCE_PATH') 'Reference path leaked into model messages.'
+Check ((New-AiVisionMessages 'TARGET' 'Prompt').Count -eq 1) 'No-reference request changed its message count.'
+$blocked=$false
+try {New-AiVisionMessages 'TARGET' 'Prompt' @(@{},@{},@{})}catch{$blocked=$_.Exception.Message -like 'At most two*'}
+Check $blocked 'Low-memory reference-count bound was not enforced.'
+Assert-AiPromptBudget 3840 256
+foreach($tokens in @($null,0,3841)){
+    $blocked=$false
+    try {Assert-AiPromptBudget $tokens 256}catch{$blocked=$_.Exception.Message -like 'context_budget:*'}
+    Check $blocked 'Missing or over-budget prompt token count was accepted.'
+}
 $summary=Get-AiEvaluationSummary @(
     @{hasGroundTruth=$true;expected=$good.prediction.tags;outcome='complete';prediction=$good.prediction;elapsedSeconds=10},
     @{hasGroundTruth=$true;expected=$good.prediction.tags;outcome='refusal';prediction=$null},
@@ -34,6 +48,22 @@ $summary=Get-AiEvaluationSummary @(
 )
 Check ($summary.attempted -eq 4 -and $summary.exactFullMatchRate -eq 0.25) 'Failures disappeared from accuracy denominator.'
 Check ($summary.fields.race.precision -eq 1 -and $summary.fields.race.coverage -eq 0.25) 'Precision and abstention coverage confused.'
+$median=Get-AiEvaluationSummary @(@{elapsedSeconds=10},@{elapsedSeconds=30})
+Check ($median.medianSeconds -eq 20) 'Even-sized latency sample has an incorrect median.'
+$left=@(
+    @{sha256=('a'*64);hasGroundTruth=$true;expected=$good.prediction.tags;outcome='refusal'},
+    @{sha256=('b'*64);hasGroundTruth=$true;expected=$good.prediction.tags;outcome='complete';prediction=$good.prediction}
+)
+$right=@(@{sha256=('a'*64);hasGroundTruth=$true;expected=$good.prediction.tags;outcome='complete';prediction=$good.prediction})
+$comparison=Compare-AiEvaluation $left $right
+Check ($comparison.paired -eq 1 -and $comparison.baselineOnly -eq 1 -and $comparison.baseline.exactFullMatches -eq 0 -and $comparison.candidate.exactFullMatches -eq 1 -and $comparison.improvedFullMatches -eq 1) 'Comparison used unequal samples or dropped a failure.'
+$blocked=$false
+try {Compare-AiEvaluation $left @($right[0],$right[0])}catch{$blocked=$_.Exception.Message -like 'Duplicate content*'}
+Check $blocked 'Ambiguous duplicate pairing accepted.'
+$conflict=@{sha256=('a'*64);hasGroundTruth=$true;expected=@{gender='male';role='caster';weaponOrStyle='wizard';race='human'};outcome='refusal'}
+$blocked=$false
+try {Compare-AiEvaluation $left @($conflict)}catch{$blocked=$_.Exception.Message -like 'Authoritative labels differ*'}
+Check $blocked 'Conflicting source labels compared as equivalent ground truth.'
 $blocked=$false
 try {Invoke-LocalAiTool $null 'update_tags' @{}} catch {$blocked=$_.Exception.Message -like 'Read-only benchmark*'}
 Check $blocked 'Benchmark MCP client allowed a mutating tool.'

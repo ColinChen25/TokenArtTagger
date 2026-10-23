@@ -112,7 +112,41 @@ function Get-AiEvaluationSummary($Results) {
     $counts=[ordered]@{}
     foreach($group in @($rows | Group-Object outcome | Sort-Object Name)){$counts[$group.Name]=$group.Count}
     $durations=@($rows | Where-Object {$null -ne $_.elapsedSeconds} | ForEach-Object elapsedSeconds | Sort-Object)
-    return [ordered]@{attempted=$rows.Count;labeled=$labeled.Count;validOutputs=$valid.Count;outcomes=$counts;exactFullMatches=$exact;exactFullMatchRate=if($labeled.Count){$exact/[double]$labeled.Count}else{$null};fields=$fields;medianSeconds=if($durations.Count){$durations[[int][math]::Floor($durations.Count/2)]}else{$null};automaticAcceptanceEnabled=$false;interpretation='Purposive diagnostic sample; not a population accuracy estimate or calibrated confidence.'}
+    $median=$null
+    if($durations.Count){
+        $middle=[int][math]::Floor($durations.Count/2)
+        $median=if($durations.Count % 2){$durations[$middle]}else{($durations[$middle-1]+$durations[$middle])/2.0}
+    }
+    return [ordered]@{attempted=$rows.Count;labeled=$labeled.Count;validOutputs=$valid.Count;outcomes=$counts;exactFullMatches=$exact;exactFullMatchRate=if($labeled.Count){$exact/[double]$labeled.Count}else{$null};fields=$fields;medianSeconds=$median;automaticAcceptanceEnabled=$false;interpretation='Purposive diagnostic sample; not a population accuracy estimate or calibrated confidence.'}
 }
 
-Export-ModuleMember -Function Get-AiTextHash,Get-AiSettingsHash,Get-AiTagContract,Test-AiPrediction,Get-AiEvaluationSummary
+function Compare-AiEvaluation($Baseline, $Candidate) {
+    $maps=@(@{},@{});$collections=@(@($Baseline),@($Candidate))
+    for($i=0;$i -lt 2;$i++){
+        foreach($row in $collections[$i]){
+            if($row.sha256 -cnotmatch '^[a-f0-9]{64}$'){throw 'Comparison requires full content hashes.'}
+            if($maps[$i].ContainsKey($row.sha256)){throw 'Duplicate content makes paired comparison ambiguous.'}
+            $maps[$i][$row.sha256]=$row
+        }
+    }
+    $left=New-Object Collections.Generic.List[object];$right=New-Object Collections.Generic.List[object]
+    $improved=0;$regressed=0
+    foreach($hash in @($maps[1].Keys | Sort-Object)){
+        if(-not $maps[0].ContainsKey($hash)){continue}
+        $a=$maps[0][$hash];$b=$maps[1][$hash]
+        if($a.hasGroundTruth -ne $b.hasGroundTruth){throw 'Ground-truth availability differs for matching content.'}
+        if($a.hasGroundTruth){
+            foreach($field in @('gender','role','weaponOrStyle','race')){
+                if($a.expected.$field -cne $b.expected.$field){throw 'Authoritative labels differ for matching content.'}
+            }
+        }
+        $left.Add($a);$right.Add($b)
+        $aExact=(Get-AiEvaluationSummary @($a)).exactFullMatches
+        $bExact=(Get-AiEvaluationSummary @($b)).exactFullMatches
+        if($bExact -gt $aExact){$improved++};if($bExact -lt $aExact){$regressed++}
+    }
+    if(-not $left.Count){throw 'No shared content to compare.'}
+    return [ordered]@{paired=$left.Count;baselineOnly=$maps[0].Count-$left.Count;candidateOnly=$maps[1].Count-$right.Count;improvedFullMatches=$improved;regressedFullMatches=$regressed;baseline=(Get-AiEvaluationSummary ($left.ToArray()));candidate=(Get-AiEvaluationSummary ($right.ToArray()));interpretation='Paired shared-content development comparison, not held-out accuracy or calibrated confidence.'}
+}
+
+Export-ModuleMember -Function Get-AiTextHash,Get-AiSettingsHash,Get-AiTagContract,Test-AiPrediction,Get-AiEvaluationSummary,Compare-AiEvaluation

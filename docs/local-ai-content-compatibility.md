@@ -1,6 +1,6 @@
 # Artistic nudity and NSFW fantasy art
 
-Requirement recorded 2026-10-22. This is a proposed local-inference contract and evaluation plan; no model inference or refusal benchmark has run yet. The first cached candidate remains Qwen3-VL 2B Instruct Q4_K_M. Runtime setup and the benchmark are the next implementation work.
+Requirement recorded 2026-10-22; benchmark update 2026-10-23. The cached Qwen3-VL 2B Instruct Q4_K_M has completed a 36-image CPU development benchmark with no detected explicit refusals. Visual inspection confirmed three artistic-nudity examples, including one succubus-like design, and two minimal-outfit examples. This small sample does not establish general compatibility; tagging errors remain substantial. See [measured results and limitations](local-ai-results.md). The contract and broader evaluation protocol below still apply.
 
 The user's library can contain artistic nudity, minimal tribal outfits, succubus imagery, and other NSFW fantasy elements. The tagging feature must still classify visible character features into the existing gender, role, weapon/style, and fantasy-race vocabulary. Content exposure alone must not cause an image to be skipped, its useful details to be obscured, or its tags to be replaced with guesses.
 

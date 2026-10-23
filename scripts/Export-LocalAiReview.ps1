@@ -34,14 +34,17 @@ try {
             $page=(Invoke-LocalAiTool $client 'list_images' @{limit=100;offset=$offset;expectedWorkspaceRevision=$status.workspaceRevision}).structuredContent
             foreach($i in $page.images){$catalog[$i.path]=$i};$offset=$page.nextOffset
         }while($null -ne $offset)
-        foreach($entry in $manifest.items){
-            $r=$records[$entry.path];if(-not $r){continue}
+        foreach($entry in @($manifest.items)+@($manifest.references)){
+            if($null -eq $entry){continue}
+            $isReference=$null -ne $entry.tags
+            $r=if($isReference){$entry}else{$records[$entry.path]};if(-not $r){continue}
             $target=Join-Path $previews ($r.sha256+'.png')
             if(Test-Path -LiteralPath $target){continue}
             $i=$catalog[$entry.path];if(-not $i){throw 'Sample no longer exists in the app scan.'}
             $detail=(Invoke-LocalAiTool $client 'image_details' @{id=$i.id;includeHash=$true}).structuredContent
             if($detail.sha256 -ne $r.sha256){throw 'Source changed since inference; do not display a different image beside this prediction.'}
-            $pixels=Invoke-LocalAiTool $client 'view_image' @{id=$i.id;expectedRevision=$detail.image.revision;maxDimension=$manifest.settings.maxDimension}
+            $dimension=if($isReference){$manifest.settings.referenceMaxDimension}else{$manifest.settings.maxDimension}
+            $pixels=Invoke-LocalAiTool $client 'view_image' @{id=$i.id;expectedRevision=$detail.image.revision;maxDimension=$dimension}
             $picture=@($pixels.content | Where-Object type -eq 'image')
             if($picture.Count -ne 1){throw 'Preview response has no unique image.'}
             [IO.File]::WriteAllBytes($target,[Convert]::FromBase64String($picture[0].data))
@@ -55,7 +58,10 @@ $rows=@($manifest.items | ForEach-Object {if($records.ContainsKey($_.path)){$rec
 $summary=Get-AiEvaluationSummary $rows
 $annotations=@{}
 $annotationPath=Join-Path $OutputDirectory 'content-annotations.json'
-if(Test-Path -LiteralPath $annotationPath){foreach($a in @(Get-Content -Raw -Encoding UTF8 -LiteralPath $annotationPath | ConvertFrom-Json)){$annotations[$a.sha256]=$a}}
+if(Test-Path -LiteralPath $annotationPath){
+    $loadedAnnotations=Get-Content -Raw -Encoding UTF8 -LiteralPath $annotationPath | ConvertFrom-Json
+    foreach($a in $loadedAnnotations){$annotations[$a.sha256]=$a}
+}
 $groups=[ordered]@{}
 foreach($group in @('ordinary_clothed','minimal_outfit','artistic_nudity','succubus_like','unreviewed')){
     $members=@($rows | Where-Object {if($annotations.ContainsKey($_.sha256)){$group -in $annotations[$_.sha256].groups}else{$group -eq 'unreviewed'}})
@@ -71,7 +77,18 @@ body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#f5f4ef;color:#202b3
 <p class="notice">All outputs are suggestions. No tags or filenames were changed. Existing filename labels remain authoritative. This is a deliberately difficult diagnostic sample, not an estimate of whole-library accuracy.</p>
 '@)
 [void]$html.Append('<p>'+ (ConvertTo-ReviewHtml ($summary.attempted.ToString()+' / '+@($manifest.items).Count+' images processed; '+$summary.validOutputs+' schema-valid outputs; '+$summary.exactFullMatches+' full matches among '+$summary.labeled+' labeled attempts.'))+'</p>')
-[void]$html.Append('<p class="muted">CPU only · two threads · one image at a time · '+(ConvertTo-ReviewHtml $manifest.settings.model)+' · prompt '+(ConvertTo-ReviewHtml $manifest.settings.promptVersion)+'</p><div class="cards">')
+[void]$html.Append('<p class="muted">CPU only &middot; two threads &middot; one target at a time &middot; '+(ConvertTo-ReviewHtml $manifest.settings.model)+' &middot; prompt '+(ConvertTo-ReviewHtml $manifest.settings.promptVersion)+'</p>')
+if(@($manifest.references).Count -and $null -ne $manifest.references){
+    [void]$html.Append('<h2>Trusted visual references</h2><p>These fixed examples were supplied for every target below. They are excluded from accuracy scoring.</p><div class="cards">')
+    foreach($reference in $manifest.references){
+        [void]$html.Append('<article><h2>'+(ConvertTo-ReviewHtml ([IO.Path]::GetFileName($reference.path)))+'</h2>')
+        if(Test-Path -LiteralPath (Join-Path $previews ($reference.sha256+'.png'))){[void]$html.Append('<img loading="lazy" src="previews/'+$reference.sha256+'.png" alt="Trusted reference artwork">')}
+        $referenceTagText=(@('gender','role','weaponOrStyle','race') | ForEach-Object {TagText $reference.tags.$_}) -join ' / '
+        [void]$html.Append('<p>'+(ConvertTo-ReviewHtml $referenceTagText)+'</p></article>')
+    }
+    [void]$html.Append('</div><h2>Target predictions</h2>')
+}
+[void]$html.Append('<div class="cards">')
 foreach($entry in $manifest.items){
     $r=$records[$entry.path]
     [void]$html.Append('<article><h2>'+(ConvertTo-ReviewHtml ([IO.Path]::GetFileName($entry.path)))+'</h2>')

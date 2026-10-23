@@ -13,7 +13,7 @@ Add-Type -AssemblyName System.Drawing
 $bitmap = New-Object System.Drawing.Bitmap 8,6
 try {
     $bitmap.SetPixel(2,2,[System.Drawing.Color]::Red)
-    foreach ($name in @('a.png','b.png','Sorted\female-caster-bard-human.png')) { $bitmap.Save((Join-Path $fixture $name), [System.Drawing.Imaging.ImageFormat]::Png) }
+    foreach ($name in @('a.png','b.png','Sorted\female-caster-bard-human.png','Sorted\male-range-bow-elf.png','Sorted\female-melee-blade-human.png')) { $bitmap.Save((Join-Path $fixture $name), [System.Drawing.Imaging.ImageFormat]::Png) }
 } finally { $bitmap.Dispose() }
 $originalHashes = @(Get-ChildItem -LiteralPath $fixture -File -Recurse | Get-FileHash | Select-Object Path,Hash)
 $savedLocal = $env:LOCALAPPDATA
@@ -118,9 +118,38 @@ try {
     $filtered = (Call 'list_images' @{ folder = $sorted; query = 'bard'; state = 'tagged'; limit = 2 }).structuredContent
     Check ($filtered.total -eq 1 -and $null -eq $filtered.nextOffset -and $filtered.images[0].filenameTags.weaponOrStyle -eq 'bard') 'Filtered final page did not return.'
     Check (((Call 'list_images' @{ query = 'no-such-image'; limit = 2 }).structuredContent.total) -eq 0) 'Empty query result failed.'
+    $dataset = Join-Path $testRoot 'dataset'
+    $datasetScript = Join-Path $PSScriptRoot 'Export-LocalAiDataset.ps1'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $datasetScript -Instance $app.Id -OutputDirectory $dataset -MaxItems 1
+    Check ($LASTEXITCODE -eq 0) 'Dataset checkpoint export failed.'
+    $firstPass = Get-Content -Raw -LiteralPath (Join-Path $dataset 'status.json') | ConvertFrom-Json
+    Check ($firstPass.status -eq 'checkpointed' -and $firstPass.completedThisRun -eq 1) 'Dataset checkpoint did not stop at one item.'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $datasetScript -Instance $app.Id -OutputDirectory $dataset
+    Check ($LASTEXITCODE -eq 0) 'Dataset resume failed.'
+    $datasetResult = Get-Content -Raw -LiteralPath (Join-Path $dataset 'status.json') | ConvertFrom-Json
+    Check ($datasetResult.status -eq 'complete' -and $datasetResult.completedThisRun -eq 2 -and $datasetResult.summary.files -eq 3) 'Dataset resume repeated or missed a file.'
+    Check ($datasetResult.summary.uniqueContent -eq 1 -and $datasetResult.summary.exactDuplicateGroups -eq 1 -and $datasetResult.summary.conflictingLabelGroups -eq 1) 'Duplicate content with conflicting filename labels was not flagged.'
+    $backlogAudit=Join-Path $testRoot 'backlog-audit'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Find-LocalAiKnownImages.ps1') -Instance $app.Id -DatasetDirectory $dataset -OutputDirectory $backlogAudit
+    Check ($LASTEXITCODE -eq 0) 'Backlog exact-match audit failed.'
+    $auditStatus=Get-Content -Raw -LiteralPath (Join-Path $backlogAudit 'status.json') | ConvertFrom-Json
+    Check ($auditStatus.status -eq 'complete' -and $auditStatus.summary.checked -eq 2 -and $auditStatus.summary.conflictingLabels -eq 2 -and $auditStatus.summary.knownLabels -eq 0) 'Conflicting trusted copies became automatic backlog labels.'
+    # The same pixels under different filenames must never leak a target answer through a reference.
+    $referencePlan=Join-Path $testRoot 'reference-plan.json'
+    @{references=@((Join-Path $sorted 'female-caster-bard-human.png'));targets=@((Join-Path $sorted 'male-range-bow-elf.png'))} | ConvertTo-Json | Set-Content -LiteralPath $referencePlan -Encoding UTF8
+    $referenceRun=Join-Path $testRoot 'reference-leak-check'
+    $savedErrorPreference=$ErrorActionPreference
+    try {
+        $ErrorActionPreference='Continue'
+        $null=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Invoke-LocalAiBenchmark.ps1') -Instance $app.Id -OutputDirectory $referenceRun -TaggedCount 1 -UntaggedCount 0 -ReferencePlanFile $referencePlan 2>&1
+        $referenceExit=$LASTEXITCODE
+    } finally {$ErrorActionPreference=$savedErrorPreference}
+    $referenceStatus=Get-Content -Raw -LiteralPath (Join-Path $referenceRun 'status.json') | ConvertFrom-Json
+    Check ($referenceExit -ne 0 -and $referenceStatus.status -eq 'failed' -and $referenceStatus.error -like 'Target content duplicates*') 'Reference content leakage was not rejected.'
+    Check (-not (Test-Path -LiteralPath (Join-Path $referenceRun 'runtime.json'))) 'Reference leakage rejection started model inference.'
     $newHashes = @(Get-ChildItem -LiteralPath $fixture -File -Recurse | Get-FileHash | Select-Object Path,Hash)
     Check (-not (Compare-Object $originalHashes $newHashes -Property Path,Hash)) 'Source images were renamed or changed.'
-    'PASS: MCP handshake/discovery; all 11 tools; real desktop IPC; CLI and Unicode paths; nested exclusion; atomic validation; stale revisions; PNG pixels; SHA-256; selection; rename preview; rescan persistence; reset; original files unchanged.'
+    'PASS: MCP handshake/discovery; all 11 tools; real desktop IPC; CLI and Unicode paths; nested exclusion; atomic validation; stale revisions; PNG pixels; SHA-256; selection; rename preview; rescan persistence; reset; filtered final pages; dataset checkpoint/resume and conflicting duplicates; reference leakage blocked before inference; original files unchanged.'
     "Test artifacts: $testRoot"
 } finally {
     if ($bridge) { if (-not $bridge.HasExited) { $bridge.StandardInput.Close(); if (-not $bridge.WaitForExit(3000)) { $bridge.Kill() } }; $bridge.Dispose() }

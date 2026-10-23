@@ -10,7 +10,14 @@ function Start-LocalAiMcp([string]$Repository, [int]$Instance) {
     $bridge.StartInfo.RedirectStandardInput = $true
     $bridge.StartInfo.RedirectStandardOutput = $true
     $bridge.StartInfo.RedirectStandardError = $true
-    [void]$bridge.Start()
+    $utf8=New-Object Text.UTF8Encoding($false)
+    $bridge.StartInfo.StandardOutputEncoding=$utf8
+    $bridge.StartInfo.StandardErrorEncoding=$utf8
+    # .NET Framework has no StandardInputEncoding property. Its redirected writer
+    # inherits Console.InputEncoding and may flush a BOM before our first JSON line.
+    $savedInputEncoding=[Console]::InputEncoding
+    try {[Console]::InputEncoding=$utf8;[void]$bridge.Start()}
+    finally {[Console]::InputEncoding=$savedInputEncoding}
     $client = @{ Process=$bridge; NextId=0; ErrorTask=$bridge.StandardError.ReadToEndAsync(); Faulted=$false }
     try {
         $null = Invoke-AiRpc $client 'initialize' @{protocolVersion='2025-11-25';capabilities=@{};clientInfo=@{name='local-ai-benchmark';version='1'}}
@@ -33,7 +40,7 @@ function Invoke-AiRpc($Client, [string]$Method, $Parameters) {
     if(-not $read.Wait(135000)){ $Client.Faulted=$true; throw "MCP timeout: $Method" }
     if(-not $read.Result){ $Client.Faulted=$true; throw 'MCP bridge closed its output.' }
     $response=$read.Result | ConvertFrom-Json
-    if($response.id -ne $Client.NextId){$Client.Faulted=$true;throw 'MCP response ID mismatch.'}
+    if($response.id -ne $Client.NextId){$Client.Faulted=$true;throw ("MCP response ID mismatch (expected $($Client.NextId), got $($response.id)): "+($response.error | ConvertTo-Json -Compress))}
     if($response.error){throw ($response.error | ConvertTo-Json -Compress)}
     return $response.result
 }

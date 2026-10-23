@@ -3,10 +3,11 @@
 ## Next AI milestone
 
 - Runtime setup and two synthetic CPU vision tests passed on 2026-10-23. The model cache was reused. See [setup](docs/local-ai-runtime-setup.md).
-- The [resumable local benchmark and private HTML review](docs/local-ai-benchmark.md) are implemented using read-only MCP access and authoritative filename labels. Finish the development-set evaluation before selecting any automatic acceptance policy.
-- Visually annotate the benchmark's artistic nudity, minimal outfits and succubus imagery, then report refusals and tag accuracy separately. Follow [content compatibility](docs/local-ai-content-compatibility.md); an answered image can still be tagged incorrectly.
+- The [resumable local benchmark and private HTML review](docs/local-ai-benchmark.md) completed a 36-image baseline: 12/32 full tag matches and six invalid outputs. Read [measured results](docs/local-ai-results.md) before continuing; automatic acceptance remains disabled.
+- Twelve images have visual content annotations, including three artistic-nudity and two minimal-outfit examples. No explicit refusals were observed, but broader compatibility and minimal tribal outfits still need evaluation. Follow [content compatibility](docs/local-ai-content-compatibility.md); an answered image can still be tagged incorrectly.
 - Target 16 GB total shared RAM, CPU-only support, one image/model at a time, measured memory use, and pause/resume under memory pressure. Background speed is secondary to accuracy and foreground responsiveness.
-- First verify decoding and duplicate groups, then run a small feasibility check before the larger held-out evaluation. See [the implementation draft](docs/local-ai-tagging-draft.md).
+- The [trusted dataset exporter](docs/local-ai-dataset.md) hashed all 1,469 filename-tagged images; no exact duplicates were found. Group near duplicates/variants and check remaining formats before disjoint reference/calibration/test partitions.
+- Compare one or two trusted visual references with the baseline on common classes without choosing examples from the target's hidden answer. Measure memory again for multi-image prompts. Rare classes remain review-only. See [the implementation draft](docs/local-ai-tagging-draft.md).
 
 ## Future Features
 

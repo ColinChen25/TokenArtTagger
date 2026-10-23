@@ -7,7 +7,8 @@
 - Twelve images have visual content annotations, including three artistic-nudity and two minimal-outfit examples. No explicit refusals were observed, but broader compatibility and minimal tribal outfits still need evaluation. Follow [content compatibility](docs/local-ai-content-compatibility.md); an answered image can still be tagged incorrectly.
 - Target 16 GB total shared RAM, CPU-only support, one image/model at a time, measured memory use, and pause/resume under memory pressure. Background speed is secondary to accuracy and foreground responsiveness.
 - The [trusted dataset exporter](docs/local-ai-dataset.md) hashed all 1,469 filename-tagged images; no exact duplicates were found. Group near duplicates/variants and check remaining formats before disjoint reference/calibration/test partitions.
-- Compare one or two trusted visual references with the baseline on common classes without choosing examples from the target's hidden answer. Measure memory again for multi-image prompts. Rare classes remain review-only. See [the implementation draft](docs/local-ai-tagging-draft.md).
+- The fixed-reference pilot completed: valid outputs improved but full matches remained 0/8, with wizard-label bias and roughly doubled latency. Evaluate [frozen image features and small supervised classifiers](docs/local-ai-personalization-next.md) next, starting with common classes. No extra model has been downloaded; rare classes remain review-only.
+- The exact-content backlog audit completed for all 660 untagged files, with no matches against the trusted dataset. There are no confirmed labels to copy through that shortcut.
 
 ## Future Features
 

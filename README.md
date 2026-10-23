@@ -74,7 +74,7 @@ The original extension and extension casing are preserved.
 - No SQLite database yet.
 - No freeform tags yet.
 - Thumbnail cache files are runtime artifacts stored outside the scanned image folder by default.
-- No AI tagging or automatic tag suggestions.
+- No desktop AI tagging or automatic tag suggestions yet. A local CPU research benchmark, trusted-example experiments and private review reports are available; current accuracy is insufficient for unattended tagging. See [measured results](docs/local-ai-results.md) and [benchmark commands](docs/local-ai-benchmark.md).
 - Thumbnail decode failures are shown as blank thumbnails rather than blocking scan/rename.
 - Middle-click autoscroll is not implemented; normal scrollbar dragging and mouse wheel scrolling are the supported fast-scroll methods.
 - Library mode rectangle selection is temporarily disabled in v0.2.5 while its freeze is investigated. Bucket Tagging mode still supports rectangle selection.

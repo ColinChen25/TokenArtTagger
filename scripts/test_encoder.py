@@ -8,6 +8,7 @@ import numpy as np
 from encoder_common import REPO, checkpoint, fingerprint, private_path, read_json
 from extract_encoder_features import valid_vector
 from train_encoder_probe import assign_splits, decode, fit_probe, labels, make_groups, measure, predict, wilson_lower
+from export_encoder_review import paired_comparison
 
 
 class EncoderChecks(unittest.TestCase):
@@ -55,6 +56,21 @@ class EncoderChecks(unittest.TestCase):
         x=np.eye(3)
         predictions,_=predict(fit_probe(x,truth),x)
         self.assertEqual(predictions,truth)
+
+    def test_paired_invalid_result_and_null_style(self):
+        tags=dict(gender='male',race='human',role='generic',weaponOrStyle=None)
+        baseline=[dict(sha256='a'*64,expected=tags,outcome='invalid_output',prediction=None,hasGroundTruth=True)]
+        candidate=[dict(sha256='a'*64,expected=tags,prediction=tags)]
+        result=paired_comparison(baseline,candidate)
+        self.assertEqual(result['paired'],1)
+        self.assertEqual(result['baseline']['fields']['weaponOrStyle']['correct'],0)
+        self.assertEqual(result['candidate']['fullMatches'],1)
+        self.assertEqual(result['improved'],1)
+        with self.assertRaises(ValueError):
+            paired_comparison(baseline,candidate+candidate)
+        altered=dict(candidate[0],expected=dict(tags,race='elf'))
+        with self.assertRaises(ValueError):
+            paired_comparison(baseline,[altered])
 
     def test_small_sample_not_confident(self):
         self.assertLess(wilson_lower(6,6),.95)

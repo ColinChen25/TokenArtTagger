@@ -33,6 +33,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Export-LocalAiPr
 
 All data/output paths must be inside the ignored repository `.cache`. Repeat `--development-manifest` for other prior studies so their targets and references cannot become final-test data. The current study should include the Qwen baseline and both reference-plan manifests. Supply the real app PID, not an unrelated process.
 
+`scripts/Invoke-LocalAiEncoderStudy.ps1` runs these stages sequentially. Supply `-Instance`, `-DatasetDirectory`, `-PreviewDirectory`, `-FeatureDirectory`, `-OutputDirectory`, and a PowerShell `-DevelopmentManifest @('<manifest-1>', '<manifest-2>')` array. It can wait for an already-running preview exporter after verifying its process identity. `driver-status.json` records the active stage. A study-directory STOP is checked between stages; use the current preview/feature directory's STOP for an image-boundary pause within that stage.
+
 `Export-LocalAiPreviews.ps1` uses the existing read-only MCP client. It validates source revisions, filename labels, and full source hashes before and after rendering. Its inference manifest contains content hashes and cached PNG references, without original paths or labels. Completed preview hashes are checked on resume. `-MaxItems` bounds new work and retains prior results.
 
 The feature worker verifies the model files and preview hash, performs inference, validates a finite unit vector, rechecks the preview hash, and atomically writes one result. Cache identities include the model, preprocessing, preview provenance and package versions. `--max-items` bounds new vectors. `STOP` is checked before work and after each inference; the current uncommitted vector is discarded. Existing successful items are preserved.
@@ -51,7 +53,9 @@ Near-variant screening uses embedding similarity and perceptual hashes from app 
 
 Three regularized linear models predict gender, joint role/style, and race. The joint label preserves role/style validity. Reports include majority-label and nearest-neighbor baselines, full-tag matches, and field accuracy with every evaluated image in the denominator. The final-test partition is saved but never scored by this script.
 
-Scores are uncalibrated. Threshold exploration uses calibration data and minimum support, but repeated threshold selection does not establish a statistical guarantee. All output remains review-only. Classes with very few independent examples cannot acquire trustworthy precision estimates by this method.
+Scores are uncalibrated. Threshold exploration uses calibration data and minimum support in distinct variant groups. A group is counted correct only if every issued prediction in it is correct. Heuristic groups may still be related, and repeated threshold selection does not establish a statistical guarantee. All output remains review-only. Classes with very few independent examples cannot acquire trustworthy precision estimates by this method.
+
+After a complete study, `scripts/export_encoder_review.py --study <study-directory> --inputs <preview-directory> --baseline <Qwen-baseline-directory> --annotations <content-annotations.json>` creates a private static review, paired comparison and overlapping content-group counts. Invalid baseline outputs remain failures, including when a missing style happens to equal a generic character's null style. The final-test partition is absent from the review. Reports show uncalibrated scores, the target and nearest training example, and authoritative versus predicted tags.
 
 The encoder has no generated-text refusal path or content gate. Successful features on revealing art establish processing compatibility only; relevant anatomy or clothing can still be misclassified. Retain the separate content-group evaluation described in [the compatibility guide](local-ai-content-compatibility.md).
 
@@ -59,8 +63,10 @@ The encoder has no generated-text refusal path or content gate. Successful featu
 
 ```powershell
 .tools/encoder-venv/Scripts/python.exe scripts/test_encoder.py
+.tools/encoder-venv/Scripts/python.exe scripts/test_encoder_study.py
+.tools/encoder-venv/Scripts/python.exe scripts/test_encoder_runtime.py --app-pid <app-pid>
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Test-LocalAiEvaluation.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Test-AgentIntegration.ps1
 ```
 
-The encoder checks cover data boundaries, finite normalized vectors, settings identity, transitive group isolation, role/style round trips, linear and constant-class cases, small-sample uncertainty, and Windows checkpoint replacement while a reader holds the file. MCP integration additionally checks label-free previews, hash receipts, cache reuse and preprocessing invalidation with disposable images.
+The encoder checks cover data boundaries, finite normalized vectors, settings identity, transitive group isolation, role/style round trips, linear and constant-class cases, small-sample uncertainty, paired-comparison denominators, and Windows checkpoint replacement while a reader holds the file. The complete synthetic study checks development isolation and final-test exclusion. The opt-in runtime check uses cached weights and disposable PNGs to test item limits, STOP preservation, resume, cache reuse without loading weights, and corrupt-vector rejection. MCP integration additionally checks label-free previews, hash receipts, cache reuse and preprocessing invalidation with disposable images.

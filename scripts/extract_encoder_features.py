@@ -202,12 +202,14 @@ def main():
                 if model is None:
                     start = time.monotonic()
                     model, info = Siglip2VisionModel.from_pretrained(model_dir, local_files_only=True,
-                        attn_implementation='sdpa', output_loading_info=True)
+                        attn_implementation='sdpa', dtype=torch.float32, output_loading_info=True)
                     if info['missing_keys'] or info['mismatched_keys'] or info['error_msgs']:
                         raise RuntimeError(f'Incomplete vision weights: {info}')
                     if any(not (key.startswith('text_model.') or key in ('logit_scale', 'logit_bias')) for key in info['unexpected_keys']):
                         raise RuntimeError('Unexpected non-text checkpoint keys.')
                     model.eval().requires_grad_(False)
+                    if any(p.device.type != 'cpu' or p.dtype != torch.float32 for p in model.parameters()):
+                        raise RuntimeError('Expected all vision weights on CPU in float32.')
                     processor = Siglip2ImageProcessor.from_pretrained(model_dir, local_files_only=True)
                     report.update(loadSeconds=time.monotonic()-start, visionParameters=sum(p.numel() for p in model.parameters()),
                                   missingWeights=0, discardedNonVisionKeys=len(info['unexpected_keys']))

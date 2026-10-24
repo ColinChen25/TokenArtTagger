@@ -58,9 +58,21 @@ def decode(values):
 
 def measure(truth, predictions):
     total = len(truth)
+    def matches(a,b,field):
+        return b is not None and a[field] == b[field] and (field != 'weaponOrStyle' or b[field] is not None or b['role'] == 'generic')
+    per_class={}
+    for field in FIELDS:
+        entries=[]
+        for label in sorted({a[field] for a in truth},key=str):
+            support=sum(a[field]==label for a in truth)
+            issued=sum(b is not None and b[field]==label and (label is not None or b['role']=='generic') for b in predictions)
+            correct=sum(a[field]==label and matches(a,b,field) for a,b in zip(truth,predictions))
+            entries.append(dict(tag=label,support=support,predicted=issued,correct=correct,
+                                precision=correct/issued if issued else None,recall=correct/support))
+        per_class[field]=entries
     return dict(total=total, fullMatches=sum(a == b for a, b in zip(truth, predictions)),
-                fields={field: dict(correct=sum(a[field] == b[field] for a, b in zip(truth, predictions)), total=total)
-                        for field in FIELDS})
+                fields={field: dict(correct=sum(matches(a,b,field) for a,b in zip(truth,predictions)), total=total)
+                        for field in FIELDS},perClass=per_class)
 
 
 def wilson_lower(correct, total):
@@ -161,6 +173,8 @@ def main():
         majority = {name: Counter(labels(truth[i])[name] for i in train).most_common(1)[0][0]
                     for name in models}
         support = {name: Counter(labels(truth[i])[name] for i in train) for name in models}
+        group_support={name:{label:len({groups[rows[i]['sha256']] for i in train if labels(truth[i])[name]==label})
+                             for label in counts} for name,counts in support.items()}
         results = []
         metrics = {}
         for split in ('calibration', 'development'):
@@ -172,9 +186,10 @@ def main():
                 nearestNeighbor=measure(expected, [truth[train[i]] for i in nearest]),
                 majority=measure(expected, [decode(majority) for i in selected]))
             for offset, i in enumerate(selected):
-                results.append(dict(sha256=rows[i]['sha256'], split=split, expected=truth[i],
+                results.append(dict(sha256=rows[i]['sha256'], group=groups[rows[i]['sha256']], split=split, expected=truth[i],
                     prediction=predictions[offset], scores=scores[offset], automaticAcceptance=False,
                     trainingSupport={name:support[name].get(labels(predictions[offset])[name],0) for name in models},
+                    trainingGroupSupport={name:group_support[name].get(labels(predictions[offset])[name],0) for name in models},
                     nearestTrainingHash=rows[train[nearest[offset]]]['sha256']))
         # Threshold fitting is exploratory; these scores are not calibrated probabilities.
         thresholds = {}
@@ -186,8 +201,14 @@ def main():
                 for threshold in np.arange(.5, 1, .01):
                     issued = [r for r in calibration if labels(r['prediction'])[name] == label and r['scores'][name] >= threshold]
                     correct = sum(labels(r['expected'])[name] == label for r in issued)
-                    if len(issued) >= 20 and wilson_lower(correct, len(issued)) >= .95 and support[name][label] >= 20:
-                        chosen = dict(threshold=float(threshold), correct=correct, issued=len(issued), wilsonLower=wilson_lower(correct,len(issued)))
+                    grouped=defaultdict(list)
+                    for row in issued:
+                        grouped[row['group']].append(labels(row['expected'])[name]==label)
+                    correct_groups=sum(all(values) for values in grouped.values())
+                    lower=wilson_lower(correct_groups,len(grouped))
+                    if len(grouped) >= 20 and lower >= .95 and group_support[name][label] >= 20:
+                        chosen = dict(threshold=float(threshold), correct=correct, issued=len(issued),
+                                      correctGroups=correct_groups,issuedGroups=len(grouped),groupWilsonLower=lower)
                         break
                 thresholds[name][str(label)] = chosen
         # Surface closest remaining cross-partition pairs for visual review before final testing.
@@ -219,14 +240,14 @@ def main():
         summary=dict(status='complete',finalTestEvaluated=False,automaticAcceptance=False,variantAuditComplete=False,
             splitFingerprint=split_identity,counts={name:len(values) for name,values in positions.items()},
             groups=len(set(groups.values())),variantEdges=len(edges),largestGroup=max(Counter(groups.values()).values()),
-            metrics=metrics,trainingClassCounts=support,memory=monitor.stats.copy(),
+            metrics=metrics,trainingClassCounts=support,trainingGroupClassCounts=group_support,memory=monitor.stats.copy(),
             caveats=['Development and calibration metrics only; final test untouched.',
                      'Variant screening is heuristic and requires visual audit.',
                      'Rare classes have inadequate evidence; no automatic acceptance.',
                      'Scores and threshold exploration are not calibrated reliability estimates.'])
         checkpoint(output/'summary.json',summary)
         print(summary['counts'])
-        print(summary['metrics'])
+        print({split:{model:{k:v for k,v in scores.items() if k!='perClass'} for model,scores in values.items()} for split,values in summary['metrics'].items()})
 
 
 if __name__ == '__main__':

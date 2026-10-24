@@ -61,6 +61,8 @@ work-in-progress-tags.json
 *.tmp
 *.temp
 *.pid
+__pycache__/
+*.pyc
 
 # OS noise
 Thumbs.db

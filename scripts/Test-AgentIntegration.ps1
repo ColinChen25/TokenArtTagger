@@ -129,6 +129,25 @@ try {
     $datasetResult = Get-Content -Raw -LiteralPath (Join-Path $dataset 'status.json') | ConvertFrom-Json
     Check ($datasetResult.status -eq 'complete' -and $datasetResult.completedThisRun -eq 2 -and $datasetResult.summary.files -eq 3) 'Dataset resume repeated or missed a file.'
     Check ($datasetResult.summary.uniqueContent -eq 1 -and $datasetResult.summary.exactDuplicateGroups -eq 1 -and $datasetResult.summary.conflictingLabelGroups -eq 1) 'Duplicate content with conflicting filename labels was not flagged.'
+    $previews=Join-Path $testRoot 'encoder-previews'
+    $previewScript=Join-Path $PSScriptRoot 'Export-LocalAiPreviews.ps1'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $previewScript -Instance $app.Id -DatasetDirectory $dataset -OutputDirectory $previews -MaxItems 1
+    Check ($LASTEXITCODE -eq 0) 'MCP preview export failed.'
+    $previewInput=Get-Content -Raw -LiteralPath (Join-Path $previews 'inputs.json') | ConvertFrom-Json
+    Check ($previewInput.items.Count -eq 1 -and -not ($previewInput.items[0].PSObject.Properties.Name -contains 'tags') -and -not ($previewInput.items[0].PSObject.Properties.Name -contains 'path')) 'Feature input leaked labels/source names or duplicated pixels.'
+    $previewFile=Join-Path $previews $previewInput.items[0].preview
+    Check ((Get-FileHash -LiteralPath $previewFile -Algorithm SHA256).Hash.ToLowerInvariant() -eq $previewInput.items[0].previewSha256) 'Preview hash receipt differs from PNG.'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $previewScript -Instance $app.Id -DatasetDirectory $dataset -OutputDirectory $previews
+    Check ($LASTEXITCODE -eq 0) 'MCP preview resume failed.'
+    $previewStatus=Get-Content -Raw -LiteralPath (Join-Path $previews 'status.json') | ConvertFrom-Json
+    Check ($previewStatus.status -eq 'complete' -and $previewStatus.completedThisRun -eq 0) 'Preview resume repeated decoding.'
+    $savedErrorPreference=$ErrorActionPreference
+    try {
+        $ErrorActionPreference='Continue'
+        $null=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $previewScript -Instance $app.Id -DatasetDirectory $dataset -OutputDirectory $previews -MaxDimension 512 2>&1
+        $previewExit=$LASTEXITCODE
+    } finally {$ErrorActionPreference=$savedErrorPreference}
+    Check ($previewExit -ne 0) 'Preview cache reused changed preprocessing.'
     $backlogAudit=Join-Path $testRoot 'backlog-audit'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Find-LocalAiKnownImages.ps1') -Instance $app.Id -DatasetDirectory $dataset -OutputDirectory $backlogAudit
     Check ($LASTEXITCODE -eq 0) 'Backlog exact-match audit failed.'

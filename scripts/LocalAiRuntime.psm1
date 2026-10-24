@@ -16,8 +16,18 @@ namespace TokenArtTagger {
 function Write-AiCheckpoint($Value, [string]$Path) {
     $temporary = $Path + '.tmp'
     [IO.File]::WriteAllText($temporary, (ConvertTo-Json -InputObject $Value -Depth 40), (New-Object Text.UTF8Encoding($false)))
-    if (Test-Path -LiteralPath $Path) { [IO.File]::Replace($temporary,$Path,($Path + '.previous')) }
-    else { [IO.File]::Move($temporary,$Path) }
+    # A status reader or virus scanner can briefly deny Replace on Windows.
+    # Keep the complete old checkpoint and retry the atomic operation, never truncate it.
+    for($attempt=0;;$attempt++) {
+        try {
+            if (Test-Path -LiteralPath $Path) { [IO.File]::Replace($temporary,$Path,($Path + '.previous')) }
+            else { [IO.File]::Move($temporary,$Path) }
+            break
+        } catch [IO.IOException] {
+            if($attempt -ge 39){throw}
+            Start-Sleep -Milliseconds 50
+        }
+    }
 }
 
 function Get-AiMemory { [TokenArtTagger.MemoryProbe]::Read() }

@@ -2,7 +2,7 @@
 
 The Qwen CPU baseline can emit plausible but incorrect tags, and the schema constraint experiment only improved output validity. Fixed visual examples are now supported by the benchmark, but that mechanism is an experiment rather than an automatic retrieval or learning system. Read the latest [measured results](local-ai-results.md) before repeating a prompt experiment.
 
-The next approach to evaluate is **frozen image features plus small supervised classifiers**, using the existing filename labels. This separates recognizing the collection's categories from generating prose. It is a proposed experiment, not an installed or validated component. No additional model was downloaded for this milestone.
+The next approach to evaluate is **frozen image features plus small supervised classifiers**, using the existing filename labels. This separates recognizing the collection's categories from generating prose. The selected SigLIP 2 NaFlex encoder has now been installed and passed a small CPU smoke check; the [encoder guide](local-ai-encoder.md) records its pinned setup, resumable commands and evaluation limits. Installation and valid feature vectors do not establish tagging accuracy.
 
 ## Candidate and boundaries
 

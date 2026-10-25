@@ -74,7 +74,7 @@ The original extension and extension casing are preserved.
 - No SQLite database yet.
 - No freeform tags yet.
 - Thumbnail cache files are runtime artifacts stored outside the scanned image folder by default.
-- No desktop AI tagging or automatic tag suggestions yet. Local CPU research includes the Qwen benchmark and a [frozen encoder with classifiers learned from filename labels](docs/local-ai-encoder.md), with private review reports and resumable commands. Read [measured results](docs/local-ai-results.md) before considering unattended tagging.
+- No desktop AI workflow yet. Local CPU research includes the Qwen benchmark, [focused single-image questions](docs/local-ai-focused-fields.md), and [review-only suggestions from classifiers learned from filename labels](docs/local-ai-suggestions.md). These use private reports and resumable commands; they do not stage tags. Read [measured results](docs/local-ai-results.md) before considering unattended tagging.
 - Thumbnail decode failures are shown as blank thumbnails rather than blocking scan/rename.
 - Middle-click autoscroll is not implemented; normal scrollbar dragging and mouse wheel scrolling are the supported fast-scroll methods.
 - Library mode rectangle selection is temporarily disabled in v0.2.5 while its freeze is investigated. Bucket Tagging mode still supports rectangle selection.

@@ -1,6 +1,8 @@
+[CmdletBinding(DefaultParameterSetName='Dataset')]
 param(
     [Parameter(Mandatory=$true)][int]$Instance,
-    [Parameter(Mandatory=$true)][string]$DatasetDirectory,
+    [Parameter(Mandatory=$true,ParameterSetName='Dataset')][string]$DatasetDirectory,
+    [Parameter(Mandatory=$true,ParameterSetName='Benchmark')][string]$UntaggedBenchmarkDirectory,
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [ValidateRange(1,100000)][int]$MaxItems=100000,
     [ValidateRange(256,1536)][int]$MaxDimension=768
@@ -11,7 +13,8 @@ Import-Module (Join-Path $PSScriptRoot 'LocalAiRuntime.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'LocalAiMcp.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'LocalAiEvaluation.psm1') -Force
 $privateRoot=[IO.Path]::GetFullPath((Join-Path $repo '.cache'))+'\'
-foreach($directory in @($DatasetDirectory,$OutputDirectory)){
+$sourceDirectory=if($UntaggedBenchmarkDirectory){$UntaggedBenchmarkDirectory}else{$DatasetDirectory}
+foreach($directory in @($sourceDirectory,$OutputDirectory)){
     if(-not ([IO.Path]::GetFullPath($directory)).StartsWith($privateRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'Private data must stay in .cache.'}
 }
 $OutputDirectory=[IO.Path]::GetFullPath($OutputDirectory)
@@ -21,17 +24,25 @@ $lock=$null;$client=$null
 try{
     $lock=[IO.File]::Open((Join-Path $OutputDirectory 'worker.lock'),'OpenOrCreate','ReadWrite','None')
     if(Test-Path -LiteralPath (Join-Path $OutputDirectory 'STOP')){throw 'paused: STOP marker exists.'}
-    $datasetStatus=Get-Content -Raw -Encoding UTF8 (Join-Path $DatasetDirectory 'status.json') | ConvertFrom-Json
+    $datasetStatus=Get-Content -Raw -Encoding UTF8 (Join-Path $sourceDirectory 'status.json') | ConvertFrom-Json
     if($datasetStatus.status -ne 'complete' -or -not $datasetStatus.cleanupComplete){throw 'Complete the authoritative dataset export first.'}
-    $dataset=Get-Content -Raw -Encoding UTF8 (Join-Path $DatasetDirectory 'dataset.json') | ConvertFrom-Json
-    $index=Get-Content -Raw -Encoding UTF8 (Join-Path $DatasetDirectory 'index.json') | ConvertFrom-Json
+    if($UntaggedBenchmarkDirectory){
+        $manifest=Get-Content -Raw -Encoding UTF8 (Join-Path $sourceDirectory 'manifest.json') | ConvertFrom-Json
+        if(-not $manifest.fingerprint -or $manifest.fingerprint -ne $datasetStatus.fingerprint){throw 'Benchmark source identity is inconsistent.'}
+        $index=@($manifest.items | Where-Object {-not $_.hasGroundTruth} | ForEach-Object {@{path=$_.path;sha256=$_.sha256;tags=$_.expected}})
+        if(-not $index.Count -or @($index | Where-Object {$_.sha256 -cnotmatch '^[a-f0-9]{64}$'}).Count){throw 'Benchmark must contain hashed untagged targets.'}
+        $dataset=@{root=$manifest.root;fingerprint=(Get-AiSettingsHash @{source='untagged-benchmark-v1';fingerprint=$manifest.fingerprint;items=$index})}
+    }else{
+        $dataset=Get-Content -Raw -Encoding UTF8 (Join-Path $DatasetDirectory 'dataset.json') | ConvertFrom-Json
+        $index=Get-Content -Raw -Encoding UTF8 (Join-Path $DatasetDirectory 'index.json') | ConvertFrom-Json
+    }
     $client=Start-LocalAiMcp $repo $Instance
     $status=(Invoke-LocalAiTool $client 'app_status').structuredContent
     $schema=(Invoke-LocalAiTool $client 'tag_schema').structuredContent
-    if($status.root -ne $dataset.root -or (Get-AiSettingsHash $schema) -ne (Get-AiSettingsHash $dataset.schema)){throw 'Dataset differs from the current library/schema.'}
+    if($status.root -ne $dataset.root -or (-not $UntaggedBenchmarkDirectory -and (Get-AiSettingsHash $schema) -ne (Get-AiSettingsHash $dataset.schema))){throw 'Dataset differs from the current library/schema.'}
     $lookup=@{};$offset=0
     do{
-        $page=(Invoke-LocalAiTool $client 'list_images' @{state='tagged';limit=100;offset=$offset;expectedWorkspaceRevision=$status.workspaceRevision}).structuredContent
+        $page=(Invoke-LocalAiTool $client 'list_images' @{state=if($UntaggedBenchmarkDirectory){'untagged'}else{'tagged'};limit=100;offset=$offset;expectedWorkspaceRevision=$status.workspaceRevision}).structuredContent
         foreach($item in $page.images){$lookup[$item.path]=$item};$offset=$page.nextOffset
     }while($null -ne $offset)
     $settings=@{version=1;source='MCP view_image PNG';maxDimension=$MaxDimension;datasetFingerprint=$dataset.fingerprint}
@@ -42,6 +53,12 @@ try{
     foreach($record in @($index | Sort-Object sha256)){
         if(Test-Path -LiteralPath (Join-Path $OutputDirectory 'STOP')){throw 'paused: Stop requested.'}
         $item=$lookup[$record.path]
+        if($UntaggedBenchmarkDirectory -and $item){
+            # Prior benchmark IDs/revisions belong to an earlier scan. Rebind only after a full content check.
+            $live=(Invoke-LocalAiTool $client 'image_details' @{id=$item.id;includeHash=$true}).structuredContent
+            if($live.sha256 -ne $record.sha256 -or $live.image.revision -ne $item.revision){throw 'Benchmark source changed before preview.'}
+            $record.revision=$item.revision
+        }
         if(-not $item -or $item.revision -ne $record.revision -or (Get-AiSettingsHash $item.filenameTags) -ne (Get-AiSettingsHash $record.tags)){throw 'Dataset source changed; refresh its export before continuing.'}
         if($seen.ContainsKey($record.sha256)){continue};$seen[$record.sha256]=$true
         $png=Join-Path $OutputDirectory ('images\'+$record.sha256+'.png')

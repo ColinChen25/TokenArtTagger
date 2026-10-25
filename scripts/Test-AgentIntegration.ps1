@@ -213,6 +213,31 @@ try {
         Check ($targetExit -ne 0 -and $targetStatus.error -like $expectedError) ('Invalid target manifest was not rejected: '+$kind)
         Check (-not (Test-Path -LiteralPath (Join-Path $targetRun 'runtime.json'))) 'Target manifest rejection started inference.'
     }
+    $unlabeled=(Call 'list_images' @{state='untagged';limit=1}).structuredContent.images[0]
+    $unlabeledHash=(Call 'image_details' @{id=$unlabeled.id;includeHash=$true}).structuredContent.sha256
+    $unlabeledSource=Join-Path $testRoot 'untagged-benchmark-source'
+    New-Item -ItemType Directory -Path $unlabeledSource | Out-Null
+    $unlabeledManifest=@{root=$fixture;fingerprint=('b'*64);items=@(@{path=$unlabeled.path;sha256=$unlabeledHash;expected=$unlabeled.filenameTags;hasGroundTruth=$false})}
+    $unlabeledManifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $unlabeledSource 'manifest.json') -Encoding UTF8
+    @{status='complete';cleanupComplete=$true;fingerprint=('b'*64)} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $unlabeledSource 'status.json') -Encoding UTF8
+    $unlabeledPreviews=Join-Path $testRoot 'untagged-previews'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $previewScript -Instance $app.Id -UntaggedBenchmarkDirectory $unlabeledSource -OutputDirectory $unlabeledPreviews
+    Check ($LASTEXITCODE -eq 0) 'Untagged benchmark preview failed.'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $previewScript -Instance $app.Id -UntaggedBenchmarkDirectory $unlabeledSource -OutputDirectory $unlabeledPreviews
+    $unlabeledStatus=Get-Content -Raw -LiteralPath (Join-Path $unlabeledPreviews 'status.json') | ConvertFrom-Json
+    Check ($LASTEXITCODE -eq 0 -and $unlabeledStatus.completedThisRun -eq 0 -and $unlabeledStatus.cleanupComplete) 'Untagged preview resume did not reuse its verified cache.'
+    $inputText=Get-Content -Raw -LiteralPath (Join-Path $unlabeledPreviews 'inputs.json')
+    Check ($inputText -notmatch 'filename|expected|gender|race' -and $inputText -notmatch [regex]::Escape($fixture)) 'Source labels or filenames leaked into encoder inputs.'
+    $unlabeledManifest.items[0].sha256=('0'*64)
+    $unlabeledManifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $unlabeledSource 'manifest.json') -Encoding UTF8
+    $savedErrorPreference=$ErrorActionPreference
+    try{
+        $ErrorActionPreference='Continue'
+        $null=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $previewScript -Instance $app.Id -UntaggedBenchmarkDirectory $unlabeledSource -OutputDirectory (Join-Path $testRoot 'stale-untagged-previews') 2>&1
+        $staleExit=$LASTEXITCODE
+    }finally{$ErrorActionPreference=$savedErrorPreference}
+    $stalePreviewStatus=Get-Content -Raw -LiteralPath (Join-Path $testRoot 'stale-untagged-previews/status.json') | ConvertFrom-Json
+    Check ($staleExit -ne 0 -and $stalePreviewStatus.error -like 'Benchmark source changed*') 'Changed untagged bytes accepted for encoder input.'
     $newHashes = @(Get-ChildItem -LiteralPath $fixture -File -Recurse | Get-FileHash | Select-Object Path,Hash)
     Check (-not (Compare-Object $originalHashes $newHashes -Property Path,Hash)) 'Source images were renamed or changed.'
     'PASS: MCP handshake/discovery; all 11 tools; real desktop IPC; CLI and Unicode paths; nested exclusion; atomic validation; stale revisions; PNG pixels; SHA-256; selection; rename preview; rescan persistence; reset; filtered final pages; dataset checkpoint/resume and conflicting duplicates; reference leakage blocked before inference; original files unchanged.'

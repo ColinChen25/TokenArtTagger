@@ -2,6 +2,8 @@
 
 This experiment uses a frozen image encoder and learns small linear classifiers from authoritative filename labels. It is a private research workflow; it does not stage tags or rename images. Automatic acceptance remains disabled.
 
+Saved numeric classifiers can now be applied to compatible features from new images without retraining. See the [review-only suggestion pipeline](local-ai-suggestions.md), including the four-image untagged pilot, feature-space compatibility checks and protected final-test boundary.
+
 ## Selected setup
 
 - Model: `google/siglip2-base-patch16-naflex`, revision `b53b807d3a2d5e2b3911292f2d69e5341cdc064c`, Apache 2.0. Published checkpoint: 1,500,985,224 bytes; SHA-256 `ac5f28bbdf92c0c1696ccbd3ce716426049cd67ad8045b66d0d938b0f9c8bbec`.

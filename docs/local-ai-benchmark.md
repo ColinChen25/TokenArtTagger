@@ -47,6 +47,8 @@ A stopped or memory-paused run returns a nonzero exit code with `status: paused`
 
 ## Fixed-reference development experiment
 
+For one separately retrieved reference per target, use the [training-only retrieval workflow](local-ai-retrieved-references.md). It wraps this benchmark in resumable one-target child runs and adds source snapshots plus a visual related-artwork audit; it does not replace the benchmark's model or validation contract.
+
 `-ReferencePlanFile` accepts a private JSON file under `.cache` with `targets` and `references` arrays of absolute source paths already in the app scan. Set `-TaggedCount` to the target count and `-UntaggedCount 0`. One or two references are supported; use a new output directory. Every image must have authoritative filename labels. For example, the JSON shape is `{ "targets": ["TARGET_PATH"], "references": ["REFERENCE_PATH"] }`; substitute actual scanned paths in the private file, not in tracked documentation.
 
 ```powershell

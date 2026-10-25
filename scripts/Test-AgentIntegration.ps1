@@ -166,6 +166,30 @@ try {
     $referenceStatus=Get-Content -Raw -LiteralPath (Join-Path $referenceRun 'status.json') | ConvertFrom-Json
     Check ($referenceExit -ne 0 -and $referenceStatus.status -eq 'failed' -and $referenceStatus.error -like 'Target content duplicates*') 'Reference content leakage was not rejected.'
     Check (-not (Test-Path -LiteralPath (Join-Path $referenceRun 'runtime.json'))) 'Reference leakage rejection started model inference.'
+    # A retrieval plan must remain bound to the bytes/labels used for selection.
+    $snapshotItems=@((Call 'list_images' @{folder=$sorted;state='tagged';limit=100}).structuredContent.images | Select-Object -First 2)
+    $snapshots=@(foreach($item in $snapshotItems){
+        $detail=(Call 'image_details' @{id=$item.id;includeHash=$true}).structuredContent
+        @{path=$item.path;sha256=$detail.sha256;tags=$item.filenameTags}
+    })
+    foreach($kind in @('bytes','labels','incomplete')){
+        $snapshotPlan=Join-Path $testRoot ('reference-snapshot-'+$kind+'.json')
+        $planData=@{references=@($snapshotItems[0].path);targets=@($snapshotItems[1].path);sources=$snapshots} | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+        if($kind -eq 'bytes'){$planData.sources[0].sha256=('0'*64)}
+        elseif($kind -eq 'labels'){$planData.sources[0].tags.race='other'}
+        else{$planData.sources=@($planData.sources[0])}
+        $planData | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $snapshotPlan -Encoding UTF8
+        $snapshotRun=Join-Path $testRoot ('snapshot-reject-'+$kind)
+        $savedErrorPreference=$ErrorActionPreference
+        try{
+            $ErrorActionPreference='Continue'
+            $null=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Invoke-LocalAiBenchmark.ps1') -Instance $app.Id -OutputDirectory $snapshotRun -TaggedCount 1 -UntaggedCount 0 -ReferencePlanFile $snapshotPlan 2>&1
+            $snapshotExit=$LASTEXITCODE
+        }finally{$ErrorActionPreference=$savedErrorPreference}
+        $snapshotStatus=Get-Content -Raw -LiteralPath (Join-Path $snapshotRun 'status.json') | ConvertFrom-Json
+        Check ($snapshotExit -ne 0 -and $snapshotStatus.error -like 'Reference plan*') 'Stale or incomplete retrieval snapshot was not rejected.'
+        Check (-not (Test-Path -LiteralPath (Join-Path $snapshotRun 'runtime.json'))) 'Snapshot rejection started inference.'
+    }
     $newHashes = @(Get-ChildItem -LiteralPath $fixture -File -Recurse | Get-FileHash | Select-Object Path,Hash)
     Check (-not (Compare-Object $originalHashes $newHashes -Property Path,Hash)) 'Source images were renamed or changed.'
     'PASS: MCP handshake/discovery; all 11 tools; real desktop IPC; CLI and Unicode paths; nested exclusion; atomic validation; stale revisions; PNG pixels; SHA-256; selection; rename preview; rescan persistence; reset; filtered final pages; dataset checkpoint/resume and conflicting duplicates; reference leakage blocked before inference; original files unchanged.'

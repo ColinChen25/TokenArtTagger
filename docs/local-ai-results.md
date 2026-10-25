@@ -22,6 +22,8 @@ Seven races present in the development set have no training examples: chimera, c
 
 Threshold exploration found no operating point whose group-level 95% Wilson lower bound reached either 99% or 99.5% precision. For example, 145/145 correct female predictions cover 143 heuristic groups, but the lower bound is only 97.4%; the blade subset's bound is 92.4%. No race passed even the observed-precision/support screen. Scores remain uncalibrated and **automatic acceptance stays disabled**.
 
+An exploratory agreement rule also failed on the same 32 exposed Qwen targets. Keeping only matching fields from valid Qwen output and the classifier produced five complete agreed tag sets, of which only one was correct. Issued-field counts were gender 24/24 correct, role 20/23, weapon/style 10/14, and race 13/18. Role/style agreement was checked jointly before issuing a style. This small, selective diagnostic is not a calibration study, but it directly rules out treating model agreement as a reliable automatic acceptance signal here. Shared common-class mistakes remain possible.
+
 ### Grouping and scoring corrections
 
 The initial loose grouping connected 526 images, including visually different characters with similar backgrounds. Stricter screening now uses cosine similarity at least .95, or .90 with perceptual-hash distance at most 6, or .94 with difference-hash distance at most 4. Confirmed visual links override these thresholds transitively. The current partition has 1,439 groups, with a largest group of six images. Ten images in six reviewed pairs have recorded decisions; two pairs remain uncertain. This is a partial audit, and related artwork may still cross partitions. The reserved test must remain unscored until its leakage audit is complete.
@@ -101,6 +103,28 @@ One 384-pixel reference was supplied before each 768-pixel target; the same exam
 Invalid baseline outputs count as failures in these rows. The additional valid fields improved some individual counts, but complete tagging remained wrong on every target. The model repeatedly assigned the reference's wizard style to other caster types and a ranged construct. This particular fixed-reference approach is not suitable as a default. It does not prove that well-selected contrasting references or supervised classifiers cannot help.
 
 The single-reference run peaked at about **3.07 GiB incremental working set**, **3.34 GiB incremental private bytes** and **3.55 GiB combined working set**. Its smaller already-resident app baseline explains why combined memory differs from the earlier baseline; this is not evidence that references reduce memory. Prompt counts remained comfortably below the reservation limit, cleanup passed, and a completed-run resume reused all eight results without further inference. No model weights were trained.
+
+## Per-target retrieved references: 2026-10-25
+
+The [retrieval experiment](local-ai-retrieved-references.md) selected one reference per target from `probe-v3`'s training partition, using image-feature similarity without target labels. It excluded target groups, the full target pool and similarities at or above .90, then visually checked all eight pairs for related artwork. The targets were the same eight images as the earlier fixed-wizard study. Their correct labels were used only for evaluation. The model, prompt, schema, image sizes, CPU options and context limits stayed the same as that fixed-reference experiment.
+
+| Same eight development images | No reference | Fixed wizard | Retrieved reference |
+|---|---:|---:|---:|
+| Valid outputs | 3 / 8 | 8 / 8 | 7 / 8 |
+| All four tags correct | 0 / 8 | 0 / 8 | 0 / 8 |
+| Gender correct | 3 / 8 | 8 / 8 | 7 / 8 |
+| Role correct | 0 / 8 | 5 / 8 | 3 / 8 |
+| Weapon/style correct | 0 / 8 | 2 / 8 | 3 / 8 |
+| Race correct | 1 / 8 | 3 / 8 | 2 / 8 |
+| Median inference time | About 41 s | 78.2 s | 75.1 s |
+
+Invalid outputs remain failures in every row. The retrieved run's largest reported prompt was 2,836 tokens, comfortably within the 4,096-token context and 256-token response reservation. Sampled peaks were 3.13 GiB incremental working set, 3.38 GiB private memory and 3.96 GiB combined working set. Cleanup and workspace checks passed, and all eight results are checkpointed privately in `.cache/local-ai-benchmark/retrieved-one-v1/`.
+
+Several explanations included reference-only details. The pale character without a hat was described as wearing the reference's witch hat; the dark-bearded gun user was described with the reference's red beard and mace; the crossbow user was described as holding a sword like the reference. The target/reference pairs were actually viewed when checking independence. These observations support reference-detail contamination as a failure mode. They do not by themselves isolate a runtime bug from the small model's attention or reasoning limitations.
+
+Do not promote this retrieval method into the tagging workflow. A subsequent diagnostic used the same reference/assistant-label/target message arrangement with a red square and blue circle. It correctly classified the final image in both orders (2/2), taking 61.7 and 62.6 seconds, with zero reported VRAM and verified unloading/cleanup. Completed-run resume reused both results without inference. Evidence is retained in `.cache/grounding-checks/final-target-v1/`.
+
+This rules out a universal failure to process the last image; it does not establish the cause of reference-detail contamination on complex fantasy artwork. The next bounded experiment asks focused single-image questions about equipment and caster clothing, followed by anatomy if justified. Reuse existing development targets, protect the final-test partition, and do not launch a full-backlog run or download another comparison model automatically.
 
 ## Artistic nudity and minimal outfits
 

@@ -78,6 +78,8 @@ After a complete study, `scripts/export_encoder_review.py --study <study-directo
 
 The encoder has no generated-text refusal path or content gate. Successful features on revealing art establish processing compatibility only; relevant anatomy or clothing can still be misclassified. Retain the separate content-group evaluation described in [the compatibility guide](local-ai-content-compatibility.md).
 
+The cached features also support a [per-target visual-reference experiment](local-ai-retrieved-references.md). Reference selection uses training-only embeddings and no target labels, followed by a visual related-artwork audit. It then reuses the existing Qwen benchmark one image at a time; this is distinct from accepting the linear classifier's own prediction.
+
 ## Verification
 
 ```powershell

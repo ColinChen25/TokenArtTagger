@@ -57,6 +57,20 @@ try {
             $item=$lookup[$path]
             if(-not $item -or -not $item.recognizedFilename -or $item.tagIssue -ne 'None'){throw 'Reference pilot paths must have authoritative filename tags in the current scan.'}
         }
+        if($plan.sources){
+            $snapshotPaths=@{}
+            foreach($snapshot in $plan.sources){
+                if(-not $chosenPaths.ContainsKey($snapshot.path) -or $snapshotPaths.ContainsKey($snapshot.path)){throw 'Reference plan source snapshots are inconsistent.'}
+                $snapshotPaths[$snapshot.path]=$true
+                $item=$lookup[$snapshot.path]
+                $detail=(Invoke-LocalAiTool $client 'image_details' @{id=$item.id;includeHash=$true}).structuredContent
+                if($detail.sha256 -ne $snapshot.sha256 -or $detail.image.revision -ne $item.revision){throw 'Reference plan source bytes changed; prepare a new plan.'}
+                foreach($field in @('gender','role','weaponOrStyle','race')){
+                    if($snapshot.tags.$field -cne $item.filenameTags.$field){throw 'Reference plan filename labels changed; prepare a new plan.'}
+                }
+            }
+            if($snapshotPaths.Count -ne $chosenPaths.Count){throw 'Reference plan source snapshots are incomplete.'}
+        }
         foreach($path in $plan.references){
             $item=$lookup[$path]
             $detail=(Invoke-LocalAiTool $client 'image_details' @{id=$item.id;includeHash=$true}).structuredContent

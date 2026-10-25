@@ -9,6 +9,7 @@ from encoder_common import REPO, checkpoint, fingerprint, private_path, read_jso
 from extract_encoder_features import valid_vector
 from train_encoder_probe import assign_splits, decode, explore_threshold, fit_probe, labels, make_groups, measure, predict, wilson_lower
 from export_encoder_review import paired_comparison
+from plan_encoder_references import choose_reference
 
 
 class EncoderChecks(unittest.TestCase):
@@ -25,6 +26,22 @@ class EncoderChecks(unittest.TestCase):
     def test_identity_settings(self):
         self.assertEqual(fingerprint({'a':1,'b':None}),fingerprint({'b':None,'a':1}))
         self.assertNotEqual(fingerprint({'a':1}),fingerprint({'a':1,'b':None}))
+
+    def test_reference_selection_excludes_holdout_groups_and_close_variants(self):
+        rows=[dict(sha256=str(i)) for i in range(6)]
+        vectors=np.array([[1.,0.],[.99,.1],[.85,.53],[.8,.6],[.7,.71],[.6,.8]])
+        vectors/=np.linalg.norm(vectors,axis=1,keepdims=True)
+        assignments={str(i):dict(group=str(i),split='train') for i in range(6)}
+        assignments['0']['split']='development'
+        assignments['2']['split']='reserved_test'
+        assignments['3']['group']='0'
+        # Nearest is too close, second is holdout, third shares target's group.
+        selected,_=choose_reference('0',rows,vectors,assignments,{'0'})
+        self.assertEqual(selected,'4')
+        selected,_=choose_reference('0',rows,vectors,assignments,{'0','4'})
+        self.assertEqual(selected,'5')
+        with self.assertRaises(ValueError):
+            choose_reference('2',rows,vectors,assignments,set())
 
     def test_related_variants_never_cross_split(self):
         rows=[dict(sha256=str(i)*64,phash='f'*16,dhash='f'*16) for i in range(4)]

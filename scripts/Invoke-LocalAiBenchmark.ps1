@@ -6,7 +6,10 @@ param(
     [ValidateRange(1,250)][int]$MaxItems=250,
     [ValidateRange(256,1536)][int]$MaxDimension=768,
     [switch]$ConstrainRoleStyle,
-    [string]$ReferencePlanFile
+    [string]$ReferencePlanFile,
+    [string]$TargetManifestFile,
+    [ValidateSet('all','role-style','race')][string]$Focus='all',
+    [switch]$BoundEvidence
 )
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'LocalAiRuntime.psm1') -Force
@@ -31,7 +34,9 @@ try {
     $status=(Invoke-LocalAiTool $client 'app_status').structuredContent
     $schema=(Invoke-LocalAiTool $client 'tag_schema').structuredContent
     if(-not $status.root){throw 'Scan the library with MCP before starting the benchmark.'}
-    $contract=Get-AiTagContract $schema -ConstrainRoleStyle:$ConstrainRoleStyle
+    if($ReferencePlanFile -and ($TargetManifestFile -or $Focus -ne 'all')){throw 'Focused/target-only experiments cannot use a reference plan.'}
+    if($Focus -ne 'all' -and -not $TargetManifestFile){throw 'Focused experiments require a previous development target manifest.'}
+    $contract=Get-AiTagContract $schema -ConstrainRoleStyle:$ConstrainRoleStyle -Focus $Focus -BoundEvidence:$BoundEvidence
     $settings=[ordered]@{model='qwen3-vl:2b-instruct-q4_K_M';digest='afc393e3572c07db0bc84aa460d928a16c75f3fbb9ca9e0dccc4fbd2dafb573e';runtime='0.40.8';promptVersion=$contract.Version;prompt=$contract.Prompt;schema=$contract.Schema;maxDimension=$MaxDimension;threads=2;context=4096;maxTokens=256;seed=42;temperature=0;cpuOnly=$true;unloadAfterEachImage=$true}
     $catalog=New-Object Collections.Generic.List[object]
     $offset=0
@@ -44,12 +49,28 @@ try {
     $referenceSources=New-Object Collections.Generic.List[object]
     $examples=New-Object Collections.Generic.List[object]
     $plan=$null
-    if($ReferencePlanFile){
+    if($Focus -ne 'all'){$settings.focus=$Focus}
+    if($ReferencePlanFile -or $TargetManifestFile){
+        if($TargetManifestFile){
+            $TargetManifestFile=[IO.Path]::GetFullPath($TargetManifestFile)
+            if(-not $TargetManifestFile.StartsWith($privateRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'Target manifests must remain in .cache.'}
+            $source=Get-Content -Raw -Encoding UTF8 -LiteralPath $TargetManifestFile | ConvertFrom-Json
+            $sourceStatus=Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path (Split-Path $TargetManifestFile -Parent) 'status.json') | ConvertFrom-Json
+            if($sourceStatus.status -ne 'complete' -or -not $sourceStatus.cleanupComplete -or $sourceStatus.fingerprint -ne $source.fingerprint -or $source.root -ne $status.root){throw 'Target manifest must belong to a completed benchmark in this library.'}
+            if(-not $source.fingerprint -or -not @($source.items).Count){throw 'Target manifest has no saved development sample.'}
+            foreach($entry in $source.items){
+                if(-not $entry.hasGroundTruth -or $entry.sha256 -cnotmatch '^[a-f0-9]{64}$'){throw 'Target manifest requires authoritative labels and full hashes for every target.'}
+            }
+            $plan=@{references=@();targets=@($source.items | ForEach-Object path);sources=@($source.items | ForEach-Object {@{path=$_.path;sha256=$_.sha256;tags=$_.expected}})}
+            $settings.sourceManifestFingerprint=$source.fingerprint
+            $settings.targetSelectionHash=Get-AiSettingsHash $plan.sources
+        }else{
         $ReferencePlanFile=[IO.Path]::GetFullPath($ReferencePlanFile)
         if(-not $ReferencePlanFile.StartsWith($privateRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'Reference plans must remain in .cache.'}
         $plan=Get-Content -Raw -Encoding UTF8 -LiteralPath $ReferencePlanFile | ConvertFrom-Json
         if(@($plan.references).Count -lt 1 -or @($plan.references).Count -gt 2){throw 'Reference pilot requires one or two fixed reference paths.'}
-        if(@($plan.targets).Count -ne $TaggedCount -or $UntaggedCount -ne 0){throw 'Reference pilot requires TaggedCount matching its targets and UntaggedCount zero.'}
+        }
+        if(@($plan.targets).Count -ne $TaggedCount -or $UntaggedCount -ne 0){throw 'Explicit sample requires TaggedCount matching its targets and UntaggedCount zero.'}
         $chosenPaths=@{}
         foreach($path in @($plan.references)+@($plan.targets)){
             if($chosenPaths.ContainsKey($path)){throw 'Reference and target paths must be distinct.'}
@@ -79,12 +100,14 @@ try {
             $tags=[ordered]@{};foreach($field in @('gender','role','weaponOrStyle','race')){$tags[$field]=$item.filenameTags.$field}
             $referenceSources.Add(@{path=$path;sha256=$detail.sha256;tags=$tags;revision=$item.revision;id=$item.id})
         }
+        if($ReferencePlanFile){
         $contract.Prompt='Use the preceding trusted visual references as examples of this collection. Classify only the final target image below. References do not imply that the target shares their class or race. '+$contract.Prompt
         $contract.Version+='-references-v1'
         $settings.prompt=$contract.Prompt;$settings.promptVersion=$contract.Version
         $settings.references=@($referenceSources | ForEach-Object {@{sha256=$_.sha256;tags=$_.tags}})
         $settings.referenceMaxDimension=384
         $settings.targetSelectionHash=Get-AiSettingsHash @($plan.targets)
+        }
     }
     $fingerprint=Get-AiSettingsHash $settings
     if(Test-Path -LiteralPath $manifestPath){
@@ -110,7 +133,7 @@ try {
         }
         foreach($item in $tagged){if($selected.Count -ge $TaggedCount){break};if(-not $chosen.ContainsKey($item.path)){$selected.Add($item);$chosen[$item.path]=$true}}
         foreach($item in @($catalog | Where-Object {-not $_.recognizedFilename} | Sort-Object @{Expression={Get-AiTextHash ('sample-v1|'+$_.path)}} | Select-Object -First $UntaggedCount)){$selected.Add($item)}
-        $selection=if($plan){'Fixed private development plan with one or two references shared by every target; not automatic retrieval.'}else{'Deterministic coverage of rare races and styles, followed by hash-ordered fill; untagged hash-ordered sample.'}
+        $selection=if($TargetManifestFile){'Reuse every target from a completed development benchmark; no visual references or target labels sent to the model.'}elseif($plan){'Fixed private development plan with one or two references shared by every target; not automatic retrieval.'}else{'Deterministic coverage of rare races and styles, followed by hash-ordered fill; untagged hash-ordered sample.'}
         $manifest=[ordered]@{createdUtc=[DateTime]::UtcNow.ToString('o');root=$status.root;fingerprint=$fingerprint;settings=$settings;taggedRequested=$TaggedCount;untaggedRequested=$UntaggedCount;selection=$selection;references=@($referenceSources | ForEach-Object {@{path=$_.path;sha256=$_.sha256;tags=$_.tags}});items=@($selected | ForEach-Object {@{path=$_.path;hasGroundTruth=$_.recognizedFilename;expected=$_.filenameTags}})}
         Write-AiCheckpoint $manifest $manifestPath
     }
@@ -142,7 +165,7 @@ try {
             # Revalidate cached model text with current rules; never trust an old acceptance decision.
             if($saved.response){
                 Assert-AiPromptBudget $saved.response.prompt_eval_count $settings.maxTokens
-                $checked=Test-AiPrediction $saved.response $schema
+                $checked=Test-AiPrediction $saved.response $schema -Focus $Focus -BoundEvidence:$BoundEvidence
                 $saved.outcome=$checked.outcome;$saved.prediction=$checked.prediction;$saved.reason=$checked.reason
                 $saved.expected=$entry.expected;$saved.hasGroundTruth=$entry.hasGroundTruth
                 $saved | Add-Member -NotePropertyName validationVersion -NotePropertyValue 'strict-tags-v2' -Force
@@ -175,7 +198,7 @@ try {
             $picture=@($pixels.content | Where-Object type -eq 'image')
             if($picture.Count -ne 1 -or $picture[0].mimeType -ne 'image/png'){throw 'Expected exactly one MCP PNG preview.'}
             $answer=Invoke-LocalAiVision $runtime $picture[0].data $contract.Prompt $contract.Schema $stopFile 600 256 ($examples.ToArray())
-            $checked=Test-AiPrediction $answer.response $schema
+            $checked=Test-AiPrediction $answer.response $schema -Focus $Focus -BoundEvidence:$BoundEvidence
             $record.outcome=$checked.outcome;$record.prediction=$checked.prediction;$record.reason=$checked.reason
             $record.response=$answer.response;$record.elapsedSeconds=$answer.elapsedSeconds;$record.sizeVram=$answer.loadedModel.size_vram
             Clear-LocalAiModel $runtime
@@ -193,7 +216,7 @@ try {
         $record.completedUtc=[DateTime]::UtcNow.ToString('o')
         Write-AiCheckpoint $record $resultPath
         $results.Add([pscustomobject]$record);$report.completedThisRun++
-        $report.summary=Get-AiEvaluationSummary ($results.ToArray())
+        $report.summary=Get-AiEvaluationSummary ($results.ToArray()) -Focus $Focus
         $report.updatedUtc=[DateTime]::UtcNow.ToString('o')
         Write-AiCheckpoint $report $reportPath
         Write-AiCheckpoint $report.summary (Join-Path $OutputDirectory 'summary.json')
@@ -202,7 +225,7 @@ try {
     $afterStatus=(Invoke-LocalAiTool $client 'app_status').structuredContent
     if($afterStatus.workspaceRevision -ne $status.workspaceRevision){throw 'workspace_changed: Review concurrent edits before interpreting this run.'}
     $report.workspaceUnchanged=$true
-    $report.summary=Get-AiEvaluationSummary ($results.ToArray())
+    $report.summary=Get-AiEvaluationSummary ($results.ToArray()) -Focus $Focus
     if($results.Count -eq $report.total){$report.status='complete'}
     Write-AiCheckpoint $report.summary (Join-Path $OutputDirectory 'summary.json')
 } catch {

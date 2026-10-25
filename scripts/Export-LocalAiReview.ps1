@@ -55,7 +55,8 @@ try {
 function ConvertTo-ReviewHtml($Value){[Net.WebUtility]::HtmlEncode([string]$Value)}
 function TagText($Value){if($null -eq $Value){'unresolved / not applicable'}else{[string]$Value}}
 $rows=@($manifest.items | ForEach-Object {if($records.ContainsKey($_.path)){$records[$_.path]}})
-$summary=Get-AiEvaluationSummary $rows
+$focus=if($manifest.settings.focus){$manifest.settings.focus}else{'all'}
+$summary=Get-AiEvaluationSummary $rows -Focus $focus
 $annotations=@{}
 $annotationPath=Join-Path $OutputDirectory 'content-annotations.json'
 if(Test-Path -LiteralPath $annotationPath){
@@ -65,7 +66,7 @@ if(Test-Path -LiteralPath $annotationPath){
 $groups=[ordered]@{}
 foreach($group in @('ordinary_clothed','minimal_outfit','artistic_nudity','succubus_like','unreviewed')){
     $members=@($rows | Where-Object {if($annotations.ContainsKey($_.sha256)){$group -in $annotations[$_.sha256].groups}else{$group -eq 'unreviewed'}})
-    if($members.Count){$groups[$group]=Get-AiEvaluationSummary $members}
+    if($members.Count){$groups[$group]=Get-AiEvaluationSummary $members -Focus $focus}
 }
 Write-AiCheckpoint $groups (Join-Path $OutputDirectory 'content-group-summary.json')
 $html=New-Object Text.StringBuilder
@@ -76,7 +77,9 @@ body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#f5f4ef;color:#202b3
 </style><main><h1>Local AI tagging review</h1>
 <p class="notice">All outputs are suggestions. No tags or filenames were changed. Existing filename labels remain authoritative. This is a deliberately difficult diagnostic sample, not an estimate of whole-library accuracy.</p>
 '@)
-[void]$html.Append('<p>'+ (ConvertTo-ReviewHtml ($summary.attempted.ToString()+' / '+@($manifest.items).Count+' images processed; '+$summary.validOutputs+' schema-valid outputs; '+$summary.exactFullMatches+' full matches among '+$summary.labeled+' labeled attempts.'))+'</p>')
+$matchLabel=if($focus -eq 'all'){'full tag matches'}else{'matches for '+($summary.evaluatedFields -join ' + ')}
+[void]$html.Append('<p>'+ (ConvertTo-ReviewHtml ($summary.attempted.ToString()+' / '+@($manifest.items).Count+' images processed; '+$summary.validOutputs+' schema-valid outputs; '+$summary.exactFocusedMatches+' '+$matchLabel+' among '+$summary.labeled+' labeled attempts.'))+'</p>')
+if($focus -ne 'all'){[void]$html.Append('<p class="notice">This experiment evaluates only '+(ConvertTo-ReviewHtml ($summary.evaluatedFields -join ', '))+'. Other fields are deliberately blank; no full-tag accuracy is claimed.</p>')}
 [void]$html.Append('<p class="muted">CPU only &middot; two threads &middot; one target at a time &middot; '+(ConvertTo-ReviewHtml $manifest.settings.model)+' &middot; prompt '+(ConvertTo-ReviewHtml $manifest.settings.promptVersion)+'</p>')
 if(@($manifest.references).Count -and $null -ne $manifest.references){
     [void]$html.Append('<h2>Trusted visual references</h2><p>These fixed examples were supplied for every target below. They are excluded from accuracy scoring.</p><div class="cards">')
@@ -97,7 +100,7 @@ foreach($entry in $manifest.items){
     if(Test-Path -LiteralPath $preview){[void]$html.Append('<img loading="lazy" src="previews/'+$r.sha256+'.png" alt="Character artwork used for this prediction">')}
     [void]$html.Append('<p><span class="badge">'+(ConvertTo-ReviewHtml $r.outcome)+'</span> <span class="muted">'+(ConvertTo-ReviewHtml ('{0:N1} seconds' -f $r.elapsedSeconds))+'</span></p>')
     [void]$html.Append('<table><tr><th>Field</th><th>Filename label</th><th>AI suggestion</th></tr>')
-    foreach($field in @('gender','role','weaponOrStyle','race')){
+    foreach($field in $summary.evaluatedFields){
         $expected=if($r.hasGroundTruth){TagText $r.expected.$field}else{'No trusted label'}
         $prediction=if($r.prediction){TagText $r.prediction.tags.$field}else{'No accepted prediction'}
         $class=if($r.hasGroundTruth -and ($r.outcome -notin @('complete','partial') -or $r.expected.$field -cne $r.prediction.tags.$field)){' class="different"'}else{''}

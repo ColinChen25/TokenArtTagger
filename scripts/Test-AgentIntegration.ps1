@@ -190,6 +190,29 @@ try {
         Check ($snapshotExit -ne 0 -and $snapshotStatus.error -like 'Reference plan*') 'Stale or incomplete retrieval snapshot was not rejected.'
         Check (-not (Test-Path -LiteralPath (Join-Path $snapshotRun 'runtime.json'))) 'Snapshot rejection started inference.'
     }
+    # Focused experiments reuse completed development targets, with live byte/label checks.
+    foreach($kind in @('incomplete-run','bytes','labels','unhashed','duplicate')){
+        $sourceRoot=Join-Path $testRoot ('target-source-'+$kind)
+        New-Item -ItemType Directory -Path $sourceRoot | Out-Null
+        $sourceItem=@{path=$snapshots[0].path;sha256=$snapshots[0].sha256;expected=$snapshots[0].tags;hasGroundTruth=$true} | ConvertTo-Json -Depth 12 | ConvertFrom-Json
+        if($kind -eq 'bytes'){$sourceItem.sha256=('0'*64)}
+        if($kind -eq 'labels'){$sourceItem.expected.race='other'}
+        if($kind -eq 'unhashed'){$sourceItem.sha256=$null}
+        $sourceItems=@(if($kind -eq 'duplicate'){$sourceItem;$sourceItem}else{$sourceItem})
+        @{root=$fixture;fingerprint=('a'*64);items=$sourceItems} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $sourceRoot 'manifest.json') -Encoding UTF8
+        @{status=if($kind -eq 'incomplete-run'){'running'}else{'complete'};cleanupComplete=$true;fingerprint=('a'*64)} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $sourceRoot 'status.json') -Encoding UTF8
+        $targetRun=Join-Path $testRoot ('target-reject-'+$kind)
+        $savedErrorPreference=$ErrorActionPreference
+        try{
+            $ErrorActionPreference='Continue'
+            $null=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'Invoke-LocalAiBenchmark.ps1') -Instance $app.Id -OutputDirectory $targetRun -TaggedCount $sourceItems.Count -UntaggedCount 0 -TargetManifestFile (Join-Path $sourceRoot 'manifest.json') -Focus role-style 2>&1
+            $targetExit=$LASTEXITCODE
+        }finally{$ErrorActionPreference=$savedErrorPreference}
+        $targetStatus=Get-Content -Raw -LiteralPath (Join-Path $targetRun 'status.json') | ConvertFrom-Json
+        $expectedError=switch($kind){'incomplete-run'{'Target manifest must belong*'} 'unhashed'{'Target manifest requires*'} 'duplicate'{'Reference and target paths must be distinct*'} default{'Reference plan*'}}
+        Check ($targetExit -ne 0 -and $targetStatus.error -like $expectedError) ('Invalid target manifest was not rejected: '+$kind)
+        Check (-not (Test-Path -LiteralPath (Join-Path $targetRun 'runtime.json'))) 'Target manifest rejection started inference.'
+    }
     $newHashes = @(Get-ChildItem -LiteralPath $fixture -File -Recurse | Get-FileHash | Select-Object Path,Hash)
     Check (-not (Compare-Object $originalHashes $newHashes -Property Path,Hash)) 'Source images were renamed or changed.'
     'PASS: MCP handshake/discovery; all 11 tools; real desktop IPC; CLI and Unicode paths; nested exclusion; atomic validation; stale revisions; PNG pixels; SHA-256; selection; rename preview; rescan persistence; reset; filtered final pages; dataset checkpoint/resume and conflicting duplicates; reference leakage blocked before inference; original files unchanged.'

@@ -6,6 +6,8 @@ The benchmark is a diagnostic prototype. A complete, schema-valid answer is not 
 
 The first 36-image baseline and a paired schema experiment are recorded in [measured results](local-ai-results.md). The trusted filename collection can be exported separately with the [dataset workflow](local-ai-dataset.md).
 
+For the current target-only role/style and anatomy experiments, use the [focused-field workflow](local-ai-focused-fields.md). It reuses completed development targets, forces unrelated fields to null, and scores only the requested fields against a matched bounded-output control.
+
 ## Run or resume
 
 First read [runtime setup](local-ai-runtime-setup.md), confirm the private setup checkpoint is complete, and ensure no earlier worker is active. The installed runtime is Ollama 0.40.8 and the model is the pinned `qwen3-vl:2b-instruct-q4_K_M` cache. These scripts intentionally fail when either is missing instead of downloading it.

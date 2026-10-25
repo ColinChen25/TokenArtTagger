@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$BaselineDirectory,
-    [Parameter(Mandatory=$true)][string]$CandidateDirectory
+    [Parameter(Mandatory=$true)][string]$CandidateDirectory,
+    [ValidateSet('all','role-style','race')][string]$Focus='all'
 )
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'LocalAiRuntime.psm1') -Force
@@ -34,7 +35,11 @@ function Read-Run([string]$Directory){
 $baseline=Read-Run $BaselineDirectory
 $candidate=Read-Run $CandidateDirectory
 if($baseline.manifest.root -ne $candidate.manifest.root){throw 'Comparison libraries differ.'}
-$comparison=Compare-AiEvaluation $baseline.records $candidate.records
+foreach($run in @($baseline,$candidate)){
+    $runFocus=if($run.manifest.settings.focus){$run.manifest.settings.focus}else{'all'}
+    if($runFocus -ne 'all' -and $runFocus -ne $Focus){throw 'Comparison focus must match the focused benchmark fields.'}
+}
+$comparison=Compare-AiEvaluation $baseline.records $candidate.records -Focus $Focus
 $comparison.baselineFingerprint=$baseline.manifest.fingerprint
 $comparison.candidateFingerprint=$candidate.manifest.fingerprint
 $output=Join-Path $candidate.directory 'comparison.json'

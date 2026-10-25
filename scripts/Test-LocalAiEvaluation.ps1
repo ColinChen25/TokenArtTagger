@@ -79,4 +79,29 @@ foreach($branch in $coupled.Schema.properties.tags.anyOf){
     if($null -eq $role -or $role -eq 'generic'){Check ($styles.Count -eq 0) 'Unknown or generic role permits a style.'}
     else {Check ((Compare-Object $styles @($schema.stylesByRole.$role)).Count -eq 0) 'Role grammar differs from the app schema.'}
 }
-Write-Output "PASS: $script:passed local AI checks (schema, refusal, abstention, truncation, failure denominators, read-only boundary, fingerprint)."
+$focused=Get-AiTagContract $schema -Focus role-style
+Check ($focused.Schema.properties.evidence.maxLength -eq 180 -and $focused.Schema.properties.uncertainty.maxLength -eq 96) 'Focused explanation length is unbounded.'
+$bounded=Get-AiTagContract $schema -ConstrainRoleStyle -BoundEvidence
+Check ($bounded.Schema.properties.evidence.maxLength -eq 180 -and $bounded.Version -ne $coupled.Version) 'Bounded control reused an unbounded cache identity.'
+Check ((Test-AiPrediction @{done=$true;done_reason='stop';message=@{content=$complete.Replace('Robe and spellbook.',('x'*181))}} $schema -BoundEvidence).outcome -eq 'invalid_output') 'Overlong bounded explanation accepted.'
+Check ($focused.Version -ne $coupled.Version -and $focused.Prompt -notmatch 'Allowed tags and role/style combinations:') 'Focused prompt reused the baseline contract.'
+foreach($branch in $focused.Schema.properties.tags.anyOf){
+    Check ($branch.properties.gender.type -eq 'null' -and $branch.properties.race.type -eq 'null') 'Role focus permits unrelated field predictions.'
+}
+$raceContract=Get-AiTagContract $schema -Focus race
+Check ($raceContract.Schema.properties.tags.properties.role.type -eq 'null' -and $raceContract.Schema.properties.tags.properties.weaponOrStyle.type -eq 'null') 'Race focus permits a role/style.'
+$focusedText=$complete.Replace('"gender":"female"','"gender":null').Replace('"race":"human"','"race":null')
+$focusedPrediction=Test-AiPrediction @{done=$true;done_reason='stop';message=@{content=$focusedText}} $schema -Focus role-style
+Check ($focusedPrediction.outcome -eq 'partial') 'Focused output incorrectly rejected or promoted to a complete tag set.'
+Check ((Test-AiPrediction @{done=$true;done_reason='stop';message=@{content=$complete}} $schema -Focus role-style).outcome -eq 'invalid_output') 'Out-of-scope generated fields accepted.'
+$focusRows=@(
+    @{sha256=('a'*64);hasGroundTruth=$true;expected=$good.prediction.tags;outcome='partial';prediction=$focusedPrediction.prediction},
+    @{sha256=('b'*64);hasGroundTruth=$true;expected=$good.prediction.tags;outcome='decode_error';prediction=$null},
+    @{sha256=('c'*64);hasGroundTruth=$true;expected=$good.prediction.tags;outcome='partial';prediction=(Result $partial).prediction}
+)
+$focusedSummary=Get-AiEvaluationSummary $focusRows -Focus role-style
+Check ($focusedSummary.exactFocusedMatches -eq 1 -and $focusedSummary.exactFocusedMatchRate -eq (1/3.0) -and $null -eq $focusedSummary.exactFullMatches -and $null -eq $focusedSummary.exactFullMatchRate) 'Focused matches count failures incorrectly or imply full-tag accuracy.'
+Check ($focusedSummary.fields.Count -eq 2 -and $focusedSummary.fields.role.coverage -eq (1/3.0)) 'Focused report includes unrelated fields or loses abstention coverage.'
+$focusComparison=Compare-AiEvaluation $left @($focusRows[0]) -Focus role-style
+Check ($focusComparison.paired -eq 1 -and $focusComparison.improvedFocusedMatches -eq 1 -and $null -eq $focusComparison.improvedFullMatches) 'Focused pairing inflated full-match improvement.'
+Write-Output "PASS: $script:passed local AI checks (schema, refusal, abstention, focus boundaries, truncation, failure denominators, read-only boundary, fingerprint)."

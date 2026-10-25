@@ -8,7 +8,7 @@
 - Target 16 GB total shared RAM, CPU-only support, one image/model at a time, measured memory use, and pause/resume under memory pressure. Background speed is secondary to accuracy and foreground responsiveness.
 - The [trusted dataset exporter](docs/local-ai-dataset.md) hashed all 1,469 filename-tagged images; no exact duplicates were found. Group near duplicates/variants and check remaining formats before disjoint reference/calibration/test partitions.
 - The fixed-reference pilot completed: valid outputs improved but full matches remained 0/8. The [SigLIP 2 encoder experiment](docs/local-ai-encoder.md) encoded all 1,469 tagged images and trained a grouped linear probe: 114/185 full calibration matches, but only 1/32 on the earlier rare-category challenge (Qwen: 12/32). Preserve the original 169 reserved-test images, complete the variant audit, and address unsupported rare classes before a final evaluation. Automatic acceptance remains disabled.
-- Full encoder inference recorded a 3.19 GiB OS private-memory peak, higher than its 1.81 GiB sampled peak. Keep the 8 GiB admission/4 GiB reserve policy and verify any memory optimization with the same cached image features.
+- A verified vision-only copy of the cached encoder reduced an eight-image CPU private peak from 3.19 to 1.08 GiB, with identical features and no download. Prefer it for new runs; keep existing features and the 8 GiB admission/4 GiB reserve policy until broader low-memory validation.
 - The exact-content backlog audit completed for all 660 untagged files, with no matches against the trusted dataset. There are no confirmed labels to copy through that shortcut.
 
 ## Future Features

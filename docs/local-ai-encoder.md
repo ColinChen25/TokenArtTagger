@@ -13,6 +13,19 @@ NaFlex preserves aspect ratio approximately by resizing to patch multiples. Thes
 
 The selected model/config/card payloads total 1,500,989,329 bytes; the 32 pinned wheel payloads total 206,333,278 bytes. Reuse verified caches and keep installation receipts under ignored `.cache/encoder-setup/`. No model files or private source paths belong in commits.
 
+### Smaller local checkpoint
+
+For new feature runs, prefer the verified lossless vision-only copy. It contains the original 208 float32 vision tensors (371,746,008 bytes), with no quantization, retraining or download. The original published cache is retained. Preparation verifies every tensor's key, dtype, shape and exact values against that pinned source, then writes a hash receipt. Inference verifies the source and derived file hashes before loading.
+
+```powershell
+.tools/encoder-venv/Scripts/python.exe scripts/prepare_encoder_vision.py --app-pid <app-pid>
+.tools/encoder-venv/Scripts/python.exe scripts/extract_encoder_features.py --inputs <preview-directory>/inputs.json --output <new-feature-directory> --vision-model-directory .cache/models/siglip2-base-patch16-naflex-vision-f32 --app-pid <app-pid>
+```
+
+Preparation is checkpointed under the derived directory, respects STOP and an exclusive lock, and verifies an existing copy before reusing it. It temporarily reached about 3.00 GiB OS private memory; this is a one-time setup cost. The paired eight-image test reduced the inference worker's OS private high-water mark from **3.19 to 1.08 GiB**, while every normalized feature, preview hash and perceptual hash exactly matched the original complete cache. Worker working set stayed around 0.71 GiB; private commit and resident working set are different measures. Both workers exited cleanly.
+
+The smaller checkpoint changes the feature run's provenance fingerprint. Use a new output directory when explicitly selecting it. Keep the completed original feature cache for existing studies; do not re-encode it just to change packaging. The default command still accepts the original cache for compatibility. The study driver forwards `-VisionModelDirectory` for new runs. Admission remains 8 GiB until broader low-memory validation supports a lower threshold; eight images do not certify 16 GB hardware.
+
 ## Reusable commands
 
 For a new installation, supply an existing Python 3.12 executable and the authorized proxy URL. This installs only in `.tools/encoder-venv`, preserves pip caches and partial model downloads, and uses the selected checkpoint and hashed dependency lock:
@@ -71,6 +84,7 @@ The encoder has no generated-text refusal path or content gate. Successful featu
 .tools/encoder-venv/Scripts/python.exe scripts/test_encoder.py
 .tools/encoder-venv/Scripts/python.exe scripts/test_encoder_study.py
 .tools/encoder-venv/Scripts/python.exe scripts/test_encoder_runtime.py --app-pid <app-pid>
+.tools/encoder-venv/Scripts/python.exe scripts/test_encoder_vision_copy.py --inputs <preview-directory>/inputs.json --reference-features <completed-feature-directory> --app-pid <app-pid>
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Test-LocalAiEvaluation.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Test-AgentIntegration.ps1
 ```

@@ -6,7 +6,8 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [Parameter(Mandatory=$true)][string[]]$DevelopmentManifest,
     [string]$PreserveTestSplits,
-    [string]$VariantAudit
+    [string]$VariantAudit,
+    [string]$VisionModelDirectory
 )
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
@@ -15,6 +16,7 @@ $privateRoot=[IO.Path]::GetFullPath((Join-Path $repo '.cache'))+'\'
 $privatePaths=@($DatasetDirectory,$PreviewDirectory,$FeatureDirectory,$OutputDirectory)+$DevelopmentManifest
 if($PreserveTestSplits){$privatePaths+=$PreserveTestSplits}
 if($VariantAudit){$privatePaths+=$VariantAudit}
+if($VisionModelDirectory){$privatePaths+=$VisionModelDirectory}
 foreach($path in $privatePaths){
     if(-not ([IO.Path]::GetFullPath($path)).StartsWith($privateRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'All study inputs/outputs must remain in .cache.'}
 }
@@ -44,7 +46,9 @@ try{
     CheckStop
     $report.phase='cpu-features';Write-AiCheckpoint $report (Join-Path $OutputDirectory 'driver-status.json')
     $python=Join-Path $repo '.tools\encoder-venv\Scripts\python.exe'
-    & $python (Join-Path $PSScriptRoot 'extract_encoder_features.py') --inputs (Join-Path $PreviewDirectory 'inputs.json') --output $FeatureDirectory --app-pid $Instance
+    $featureArguments=@((Join-Path $PSScriptRoot 'extract_encoder_features.py'),'--inputs',(Join-Path $PreviewDirectory 'inputs.json'),'--output',$FeatureDirectory,'--app-pid',[string]$Instance)
+    if($VisionModelDirectory){$featureArguments+=@('--vision-model-directory',$VisionModelDirectory)}
+    & $python @featureArguments
     if($LASTEXITCODE){throw 'Feature worker did not finish; inspect its status.'}
     CheckStop
     $report.phase='grouped-development-probe';Write-AiCheckpoint $report (Join-Path $OutputDirectory 'driver-status.json')

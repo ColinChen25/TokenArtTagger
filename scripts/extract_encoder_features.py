@@ -138,6 +138,7 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--max-items', type=int, default=100000)
     parser.add_argument('--app-pid', type=int)
+    parser.add_argument('--vision-model-directory', help='Verified private lossless vision-only checkpoint; default is the original published cache.')
     args = parser.parse_args()
     inputs_path = private_path(args.inputs)
     output = private_path(args.output)
@@ -161,12 +162,20 @@ def main():
             from download_encoder import verify
             for spec in model_spec['files']:
                 verify(model_dir / spec['name'], spec)
+            vision_copy = None
+            if args.vision_model_directory:
+                from prepare_encoder_vision import verify_copy
+                model_dir = private_path(args.vision_model_directory)
+                receipt = verify_copy(model_dir, model_spec)
+                vision_copy = dict(sourceSha256=receipt['sourceSha256'], checkpoint=receipt['files']['model.safetensors'])
             settings = dict(version=1, model=model_spec, previewSettings=inputs['settings'],
                             inputFingerprint=inputs['fingerprint'], maxPatches=256,
                             alphaBackground='white', dtype='float32', threads=2, device='cpu',
                             feature='Siglip2VisionModel.pooler_output normalized L2',
                             packages={name: importlib.metadata.version(name) for name in
                                       ('torch', 'transformers', 'safetensors', 'numpy', 'Pillow', 'scipy')})
+            if vision_copy:
+                settings['visionOnlyCopy'] = vision_copy
             identity = fingerprint(settings)
             if (output / 'settings.json').exists() and read_json(output / 'settings.json')['fingerprint'] != identity:
                 raise ValueError('Encoder settings changed; use a new output directory.')

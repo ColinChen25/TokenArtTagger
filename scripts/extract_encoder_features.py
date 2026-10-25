@@ -56,18 +56,21 @@ class Monitor:
         self.finished = threading.Event()
         self.reason = None
         self.stats = dict(peakWorkerTreeBytes=0, peakWorkerPrivateBytes=0, peakCombinedWorkingSetBytes=0, peakHarnessBytes=0,
+                          peakWorkerOsWorkingSetBytes=0, peakWorkerOsPrivateBytes=0,
                           minimumAvailableBytes=2**64, samples=0, appProcessId=app_pid,
                           appCreated=self.app_created, totalPhysicalBytes=memory_status().total,
                           harnessIdentities=[dict(pid=p.pid, created=c) for p,c in self.harness])
         self.thread = threading.Thread(target=self.run, daemon=True)
 
     def sample(self):
-        total = private = 0
+        total = private = os_working = os_private = 0
         for process in [self.process] + self.process.children(recursive=True):
             try:
                 info = process.memory_info()
                 total += info.rss
                 private += info.private
+                os_working += info.peak_wset
+                os_private += info.peak_pagefile
             except self.psutil.NoSuchProcess:
                 pass
         app = 0
@@ -87,10 +90,13 @@ class Monitor:
         self.stats['peakHarnessBytes'] = max(harness, self.stats['peakHarnessBytes'])
         self.stats['peakWorkerTreeBytes'] = max(total, self.stats['peakWorkerTreeBytes'])
         self.stats['peakWorkerPrivateBytes'] = max(private, self.stats['peakWorkerPrivateBytes'])
+        # Sum-of-process high-water marks is an upper bound, not a concurrent tree peak.
+        self.stats['peakWorkerOsWorkingSetBytes'] = max(os_working, self.stats['peakWorkerOsWorkingSetBytes'])
+        self.stats['peakWorkerOsPrivateBytes'] = max(os_private, self.stats['peakWorkerOsPrivateBytes'])
         self.stats['peakCombinedWorkingSetBytes'] = max(total + harness + app, self.stats['peakCombinedWorkingSetBytes'])
         self.stats['minimumAvailableBytes'] = min(memory.available, self.stats['minimumAvailableBytes'])
         self.stats['samples'] += 1
-        if total + harness > 4 * 2**30 or private > 4 * 2**30 or memory.available < 4 * 2**30 or memory.commit_available < 4 * 2**30:
+        if total + harness > 4 * 2**30 or os_private > 4 * 2**30 or memory.available < 4 * 2**30 or memory.commit_available < 4 * 2**30:
             self.reason = 'paused: memory pressure; no current vector committed.'
 
     def run(self):

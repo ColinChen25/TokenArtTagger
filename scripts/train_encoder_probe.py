@@ -2,14 +2,24 @@
 import argparse
 from collections import Counter, defaultdict
 import html
+import importlib.metadata
 import os
 
-from encoder_common import checkpoint, exclusive_lock, fingerprint, private_path, read_json, study_status
+from encoder_common import checkpoint, exclusive_lock, file_hash, fingerprint, private_path, read_json, study_status
 
 FIELDS = ('gender', 'role', 'weaponOrStyle', 'race')
 
 
-def make_groups(records, vectors):
+def canonical_tags(value):
+    # MCP includes derived metadata such as isGeneric; only these four fields are labels.
+    return {field:value[field] for field in FIELDS}
+
+
+def tags_equal(a,b):
+    return b is not None and canonical_tags(a)==canonical_tags(b)
+
+
+def make_groups(records, vectors, reviewed_pairs=()):
     """Conservative, label-blind variant screening; not a verified duplicate detector."""
     import numpy as np
     parent = list(range(len(records)))
@@ -27,9 +37,19 @@ def make_groups(records, vectors):
             cosine = float(similarity[i, j])
             ph = (int(records[i]['phash'], 16) ^ int(records[j]['phash'], 16)).bit_count()
             dh = (int(records[i]['dhash'], 16) ^ int(records[j]['dhash'], 16)).bit_count()
-            if cosine >= .90 or (cosine >= .80 and ph <= 12) or (cosine >= .85 and dh <= 10):
+            if cosine >= .95 or (cosine >= .90 and ph <= 6) or (cosine >= .94 and dh <= 4):
                 parent[find(int(j))] = find(i)
                 edges.append(dict(a=records[i]['sha256'], b=records[j]['sha256'], cosine=cosine, phashDistance=ph, dhashDistance=dh))
+    positions = {row['sha256']: i for i, row in enumerate(records)}
+    for pair in reviewed_pairs:
+        if pair.get('related') not in (True, False, None) or len(pair.get('hashes', [])) != 2:
+            raise ValueError('Invalid reviewed variant pair.')
+        a, b = pair['hashes']
+        if a == b or a not in positions or b not in positions:
+            raise ValueError('Reviewed variant pair is absent or self-referential.')
+        if pair.get('related') is True:
+            parent[find(positions[b])] = find(positions[a])
+            edges.append(dict(a=a, b=b, source='visual-review', note=pair.get('note', '')))
     members = defaultdict(list)
     for i, row in enumerate(records):
         members[find(i)].append(row['sha256'])
@@ -37,13 +57,23 @@ def make_groups(records, vectors):
     return groups, edges, similarity
 
 
-def assign_splits(groups, development):
+def assign_splits(groups, development, reserved=None):
     dev_groups = {groups[sha] for sha in development if sha in groups}
+    members=defaultdict(set)
+    for sha,group in groups.items():
+        members[group].add(sha)
     assignments = {}
     for sha, group in groups.items():
         fraction = int(fingerprint(['group-split-v1', group])[:8], 16) / 2**32
-        assignments[sha] = ('development' if group in dev_groups else
-                            'train' if fraction < .6 else 'calibration' if fraction < .8 else 'reserved_test')
+        if group in dev_groups:
+            split='development'
+        elif reserved is not None:
+            # Once results have been examined, a regrouping must never promote exposed images into final test.
+            split=('reserved_test' if members[group] <= reserved else 'development' if members[group] & reserved
+                   else 'train' if fraction < .75 else 'calibration')
+        else:
+            split='train' if fraction < .6 else 'calibration' if fraction < .8 else 'reserved_test'
+        assignments[sha]=split
     return assignments
 
 
@@ -70,7 +100,7 @@ def measure(truth, predictions):
             entries.append(dict(tag=label,support=support,predicted=issued,correct=correct,
                                 precision=correct/issued if issued else None,recall=correct/support))
         per_class[field]=entries
-    return dict(total=total, fullMatches=sum(a == b for a, b in zip(truth, predictions)),
+    return dict(total=total, fullMatches=sum(tags_equal(a,b) for a,b in zip(truth,predictions)),
                 fields={field: dict(correct=sum(matches(a,b,field) for a,b in zip(truth,predictions)), total=total)
                         for field in FIELDS},perClass=per_class)
 
@@ -81,6 +111,24 @@ def wilson_lower(correct, total):
     p = correct/total
     z = 1.96
     return (p+z*z/(2*total)-z*((p*(1-p)+z*z/(4*total))/total)**.5)/(1+z*z/total)
+
+
+def explore_threshold(calibration, name, label, training_groups, target):
+    if training_groups < 20:
+        return None
+    for threshold in (i/100 for i in range(50,100)):
+        issued=[r for r in calibration if labels(r['prediction'])[name]==label and r['scores'][name]>=threshold]
+        grouped=defaultdict(list)
+        for row in issued:
+            grouped[row['group']].append(labels(row['expected'])[name]==label)
+        correct_groups=sum(all(values) for values in grouped.values())
+        if len(grouped) >= 20 and correct_groups/len(grouped) >= target:
+            lower=wilson_lower(correct_groups,len(grouped))
+            return dict(targetPrecision=target,threshold=threshold,
+                        correct=sum(labels(r['expected'])[name]==label for r in issued),issued=len(issued),
+                        correctGroups=correct_groups,issuedGroups=len(grouped),groupWilsonLower=lower,
+                        lowerBoundReachesTarget=lower>=target,automaticAcceptance=False)
+    return None
 
 
 def fit_probe(x, targets):
@@ -119,6 +167,8 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--development-manifest', action='append', required=True)
     parser.add_argument('--app-pid', type=int)
+    parser.add_argument('--preserve-test-splits', help='Earlier split manifest; final test may only shrink, never acquire exposed images.')
+    parser.add_argument('--variant-audit', help='Private visual-review decisions; confirmed related pairs are always grouped.')
     args = parser.parse_args()
     output = private_path(args.output)
     output.mkdir(parents=True, exist_ok=True)
@@ -146,22 +196,40 @@ def main():
         if any(row['fingerprint'] != feat_index['fingerprint'] or not valid_vector(row['features']) for row in rows):
             raise ValueError('Feature identity or vector invalid.')
         x = np.asarray([row['features'] for row in rows], dtype=np.float32)
-        truth = [by_hash[row['sha256']]['tags'] for row in rows]
+        truth = [canonical_tags(by_hash[row['sha256']]['tags']) for row in rows]
         development = set()
         for path in args.development_manifest:
             manifest = read_json(private_path(path))
             for row in manifest.get('items', []) + manifest.get('references', []):
                 if row.get('sha256'):
                     development.add(row['sha256'])
-        groups, edges, similarity = make_groups(rows, x)
+        reviewed_pairs = read_json(private_path(args.variant_audit))['pairs'] if args.variant_audit else []
+        groups, edges, similarity = make_groups(rows, x, reviewed_pairs)
         monitor.check(output / 'STOP')
-        splits = assign_splits(groups, development)
+        reserved=None
+        if args.preserve_test_splits:
+            earlier=read_json(private_path(args.preserve_test_splits))['assignments']
+            if {r['sha256'] for r in earlier}!=set(by_hash):
+                raise ValueError('Prior partition does not cover the same source hashes.')
+            reserved={r['sha256'] for r in earlier if r['split']=='reserved_test'}
+        splits = assign_splits(groups, development, reserved)
         assignments = [dict(sha256=row['sha256'], group=groups[row['sha256']], split=splits[row['sha256']]) for row in rows]
         split_identity = fingerprint(dict(features=feat_index['fingerprint'], assignments=assignments, version=1))
         if (output/'splits.json').exists() and read_json(output/'splits.json')['fingerprint'] != split_identity:
             raise ValueError('Partition changed; use a new experiment directory.')
+        settings=dict(methodVersion='grouped-linear-probe-v4', C=10, maxIterations=2000, solver='lbfgs',
+                      randomSeed=42, classWeight=None, featureFingerprint=feat_index['fingerprint'],
+                      reviewedPairs=reviewed_pairs,
+                      partitionFingerprint=split_identity,
+                      labelsFingerprint=fingerprint([dict(sha256=row['sha256'],tags=canonical_tags(by_hash[row['sha256']]['tags'])) for row in rows]),
+                      implementationSha256=file_hash(__file__),
+                      packages={name:importlib.metadata.version(name) for name in ('scikit-learn','numpy','scipy')})
+        study_identity=fingerprint(settings)
+        if (output/'study-settings.json').exists() and read_json(output/'study-settings.json')['fingerprint'] != study_identity:
+            raise ValueError('Training labels, implementation or runtime changed; use a new experiment directory.')
+        checkpoint(output/'study-settings.json',dict(fingerprint=study_identity,settings=settings))
         checkpoint(output/'splits.json', dict(fingerprint=split_identity, assignments=assignments,
-                   thresholds=dict(cosine=.90, phashAtCosine80=12, dhashAtCosine85=10), auditComplete=False))
+                   thresholds=dict(cosine=.95, phashAtCosine90=6, dhashAtCosine94=4), auditComplete=False))
         checkpoint(output/'variant-edges.json', edges)
         positions = {name: [i for i, row in enumerate(rows) if splits[row['sha256']] == name]
                      for name in ('train', 'calibration', 'development', 'reserved_test')}
@@ -197,20 +265,8 @@ def main():
         for name in models:
             thresholds[name] = {}
             for label in models[name].classes_:
-                chosen = None
-                for threshold in np.arange(.5, 1, .01):
-                    issued = [r for r in calibration if labels(r['prediction'])[name] == label and r['scores'][name] >= threshold]
-                    correct = sum(labels(r['expected'])[name] == label for r in issued)
-                    grouped=defaultdict(list)
-                    for row in issued:
-                        grouped[row['group']].append(labels(row['expected'])[name]==label)
-                    correct_groups=sum(all(values) for values in grouped.values())
-                    lower=wilson_lower(correct_groups,len(grouped))
-                    if len(grouped) >= 20 and lower >= .95 and group_support[name][label] >= 20:
-                        chosen = dict(threshold=float(threshold), correct=correct, issued=len(issued),
-                                      correctGroups=correct_groups,issuedGroups=len(grouped),groupWilsonLower=lower)
-                        break
-                thresholds[name][str(label)] = chosen
+                thresholds[name][str(label)]={str(target):explore_threshold(calibration,name,label,group_support[name][label],target)
+                                               for target in (.99,.995)}
         # Surface closest remaining cross-partition pairs for visual review before final testing.
         audit = []
         for i, row in enumerate(rows):
@@ -234,11 +290,11 @@ def main():
             else:
                 parameters[name]=dict(constant=str(model.classes_[0]))
         monitor.check(output / 'STOP')
-        checkpoint(output/'classifiers.json',dict(featureFingerprint=feat_index['fingerprint'],splitFingerprint=split_identity,models=parameters,automaticAcceptance=False))
+        checkpoint(output/'classifiers.json',dict(featureFingerprint=feat_index['fingerprint'],splitFingerprint=split_identity,studyFingerprint=study_identity,models=parameters,automaticAcceptance=False))
         checkpoint(output/'predictions.json',results)
         checkpoint(output/'threshold-exploration.json',dict(thresholds=thresholds,calibrated=False,automaticAcceptance=False))
         summary=dict(status='complete',finalTestEvaluated=False,automaticAcceptance=False,variantAuditComplete=False,
-            splitFingerprint=split_identity,counts={name:len(values) for name,values in positions.items()},
+            splitFingerprint=split_identity,studyFingerprint=study_identity,counts={name:len(values) for name,values in positions.items()},
             groups=len(set(groups.values())),variantEdges=len(edges),largestGroup=max(Counter(groups.values()).values()),
             metrics=metrics,trainingClassCounts=support,trainingGroupClassCounts=group_support,memory=monitor.stats.copy(),
             caveats=['Development and calibration metrics only; final test untouched.',

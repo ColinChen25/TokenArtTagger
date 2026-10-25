@@ -1,6 +1,42 @@
 # Local AI development results
 
-Measured 2026-10-23 on `codex/local-ai-tagging`. **The cached model runs locally on CPU, but baseline tagging accuracy is too low for unattended acceptance.** Filename tags were used only for scoring, never supplied as target answers to the model. No image tags or filenames were changed.
+Updated 2026-10-25 on `codex/local-ai-tagging`. **Both local approaches run on CPU, but neither is ready for unattended tagging.** The original Qwen benchmark used filename labels only for scoring. The new frozen-encoder experiment trains small classifiers on a separate labeled training partition. Target labels and filenames never enter feature extraction. No image tags or filenames were changed.
+
+## Frozen encoder and learned classifiers: 2026-10-25
+
+All **1,469 tagged images** now have verified MCP previews and cached SigLIP 2 NaFlex features. The [encoder workflow](local-ai-encoder.md) learns three linear classifiers: gender, joint role/style, and race. The vision weights remain frozen. No additional download is needed to rerun the classifiers.
+
+The current development study is `probe-v3`: **1,067 training, 185 calibration, 48 development, and 169 reserved-test images**. Prior Qwen targets/references and reviewed examples remain development data. The reserved test has never been scored and is a subset of the original reserved partition; regrouping cannot introduce previously exposed images into it.
+
+| Calibration measure | Learned classifiers | Nearest training example | Majority labels |
+|---|---:|---:|---:|
+| All four tags correct | 114 / 185 (61.6%) | 82 / 185 (44.3%) | 54 / 185 (29.2%) |
+| Gender correct | 182 / 185 (98.4%) | 174 / 185 | 152 / 185 |
+| Role correct | 169 / 185 (91.4%) | 148 / 185 | 130 / 185 |
+| Weapon/style correct | 136 / 185 (73.5%) | 108 / 185 | 88 / 185 |
+| Race correct | 157 / 185 (84.9%) | 141 / 185 | 123 / 185 |
+
+These are provisional development/calibration results, not final-test or whole-library accuracy. On the **same 32 rare-category targets** used in the earlier Qwen baseline, full matches fell from **12/32 to 1/32**: zero improvements and 11 regressions. The classifier improved gender and role counts (30 and 26 correct, against Qwen's 26 and 22), but weapon/style and race fell to 14 and 15, against 16 and 18. These counts include valid generic/null style matches; the earlier issued-field table excludes nulls and therefore uses different denominators.
+
+Seven races present in the development set have no training examples: chimera, construct, elemental, grippli, monster, oread and vampire. A closed-set classifier cannot predict unseen classes. Small rare-category support and common-label bias make this classifier unsuitable as the general tagger. On all 48 development images it achieved only 3 complete matches.
+
+Threshold exploration found no operating point whose group-level 95% Wilson lower bound reached either 99% or 99.5% precision. For example, 145/145 correct female predictions cover 143 heuristic groups, but the lower bound is only 97.4%; the blade subset's bound is 92.4%. No race passed even the observed-precision/support screen. Scores remain uncalibrated and **automatic acceptance stays disabled**.
+
+### Grouping and scoring corrections
+
+The initial loose grouping connected 526 images, including visually different characters with similar backgrounds. Stricter screening now uses cosine similarity at least .95, or .90 with perceptual-hash distance at most 6, or .94 with difference-hash distance at most 4. Confirmed visual links override these thresholds transitively. The current partition has 1,439 groups, with a largest group of six images. Ten images in six reviewed pairs have recorded decisions; two pairs remain uncertain. This is a partial audit, and related artwork may still cross partitions. The reserved test must remain unscored until its leakage audit is complete.
+
+The first study also incorrectly compared the MCP's derived `isGeneric` metadata against four-field predictions, producing invalid zero full-match counts. Scoring now compares exactly the four tag fields, with regression tests. `probe-v1` is retained with an invalid-metric note; `probe-v2` precedes the confirmed visual links. Neither replaces the corrected `probe-v3` results above.
+
+### Content processing and memory
+
+All 1,469 previews were encoded without a content gate or generated-text refusal path. On the existing tiny annotated groups, this classifier had zero full matches in each group: ordinary clothed (7), minimal outfit (2), artistic nudity (3), and succubus-like design (1, overlapping nudity). Processing compatibility does not establish tagging accuracy. Minimal tribal outfits still lack representative evaluation.
+
+The median feature-extraction time was **0.234 seconds per image**, with about **347 seconds total** inside the image-processing/inference loop. This excludes MCP preview export, hashing, startup and pauses. During the 1,461-image continuation, sampled worker working set peaked at **0.72 GiB**, sampled private memory at **1.81 GiB**, and sampled worker/launcher/app working set at **1.44 GiB**. A separate Windows high-water observation caught a **3.19 GiB private-memory peak** that the 200 ms sampler missed. Future workers record that OS peak directly. Do not use 1.81 GiB as the workload's maximum memory requirement.
+
+The run completed on the 32 GB development machine with at least 14.23 GiB available RAM. Admission still requires 8 GiB available; the worker pauses under its 4 GiB workload/reserve guards. This is not validation on real 16 GB hardware. The model has unloaded and the worker has exited.
+
+The current review contains 233 development/calibration cards with target, nearest training example and tag disagreement. It has no final-test predictions or automatic apply action. Next: reduce avoidable runtime overhead using the same cached weights, complete the variant audit, and design abstaining suggestions that explicitly handle unsupported categories. The learned classifier should be treated as an assistive component, not promoted over Qwen on the basis of the easier calibration aggregate.
 
 ## Baseline: 32 tagged images and four untagged images
 
@@ -87,11 +123,11 @@ At the observed request speed, 660 images alone would require roughly 7.5 hours 
 
 ## Trusted data and next experiment
 
-The [filename dataset export](local-ai-dataset.md) completed for all **1,469 tagged images**, including three outside the tagged subfolder. All byte hashes were distinct. A separate resumable audit hashed all **660 untagged images** and found **zero exact-byte matches** against that trusted collection. No tags were copied. Related crops, alternate encodings and variants have not been grouped, so the collection is not yet ready for a leakage-resistant final split. Only the fixed-reference experiment above has been attempted; no weights or classifiers have been trained.
+The [filename dataset export](local-ai-dataset.md) completed for all **1,469 tagged images**, including three outside the tagged subfolder. All byte hashes were distinct. A separate resumable audit hashed all **660 untagged images** and found **zero exact-byte matches** against that trusted collection. No tags were copied. The new encoder study above provides provisional grouping and trained classifiers; its incomplete visual audit still prevents a final accuracy claim.
 
-Next, retain these feasibility samples as development data and prepare reference, calibration and final-test partitions after variant review. Evaluate frozen image features and small supervised classifiers on common classes where there are enough independent examples; see the [next experiment plan](local-ai-personalization-next.md). Any future visual-reference study must exclude the target and related variants and select examples without using the target's authoritative answer. Rare classes with one or two examples stay review-only.
+Retain the feasibility samples as development data. Any future visual-reference study must exclude the target and related variants and select examples without using the target's authoritative answer. Rare classes with one or two examples stay review-only. The [personalization plan](local-ai-personalization-next.md) records the rationale for the frozen-feature experiment.
 
-A frozen visual embedding index and small per-field classifiers remain candidates for later personalization. Their runtime, pinned files and actual CPU memory must be evaluated before adoption; no additional comparison model was downloaded for this milestone. Do not infer that a language model has learned the collection merely because its filenames were exported.
+The frozen embedding index and learned classifiers now exist as research artifacts. Their measured results above do not support automatic acceptance. Do not infer that the Qwen language model has learned the collection: its weights were never trained.
 
 The remaining product work is a persistent suggestion/review workflow, duplicate-safe evaluation, reliable abstention/calibration, and validation on real 16 GB hardware with foreground applications. Keep automatic acceptance disabled until those checks support it.
 
@@ -105,6 +141,9 @@ Use the [benchmark commands](local-ai-benchmark.md), [dataset exporter](local-ai
 - Two-reference context feasibility checkpoint: `.cache/local-ai-benchmark/references-v1/` (not part of the paired score).
 - Dataset: `.cache/local-ai-dataset/filename-v1/`.
 - Exact-content backlog audit: `.cache/local-ai-dataset/backlog-matches-v1/`.
+- Frozen features: `.cache/encoder-features/filename-v1/`; full-run session and `os-memory-observation.json` retain memory evidence.
+- Current learned-classifier study: `.cache/encoder-study/probe-v3/`, with predictions, group decisions, numeric model parameters, threshold exploration, paired comparison and private `review.html`.
+- Visual decisions: `.cache/encoder-study/group-audit-manifest.json`; these remain partial, and uncertain relations are recorded rather than silently treated as confirmed.
 - Stop/resume evidence: baseline `stop-test-result.json`.
 
 The private HTML report contains all 36 local PNG previews and escaped text, with no scripts or remote resources. File references and PNG signatures were checked. Browser rendering was not verified because the in-app browser rejects local file URLs.

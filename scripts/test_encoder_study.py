@@ -43,6 +43,12 @@ def main():
     assert all(row['split']=='development' for row in assignments if row['sha256'] in hashes[:8])
     assert summary['metrics']['development']['linear']['fullMatches']==summary['counts']['development']
     assert read_json(output/'status.json')['cleanupComplete']
+    # A label correction must not silently overwrite an experiment with identical image bytes.
+    records[0]['tags']['race']='human' if records[0]['tags']['race']=='elf' else 'elf'
+    checkpoint(dataset/'index.json',records)
+    changed=subprocess.run(command,capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW)
+    assert changed.returncode!=0 and 'Training labels' in read_json(output/'status.json')['error']
+    assert read_json(output/'summary.json')['studyFingerprint']==summary['studyFingerprint']
     print('PASS: whole grouped study, known-development isolation, reserved-test untouched, complete metrics; '+str(root))
 
 

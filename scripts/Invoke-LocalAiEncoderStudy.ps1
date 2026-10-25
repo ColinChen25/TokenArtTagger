@@ -4,13 +4,18 @@ param(
     [Parameter(Mandatory=$true)][string]$PreviewDirectory,
     [Parameter(Mandatory=$true)][string]$FeatureDirectory,
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
-    [Parameter(Mandatory=$true)][string[]]$DevelopmentManifest
+    [Parameter(Mandatory=$true)][string[]]$DevelopmentManifest,
+    [string]$PreserveTestSplits,
+    [string]$VariantAudit
 )
 $ErrorActionPreference='Stop'
 $repo=Split-Path $PSScriptRoot -Parent
 Import-Module (Join-Path $PSScriptRoot 'LocalAiRuntime.psm1') -Force
 $privateRoot=[IO.Path]::GetFullPath((Join-Path $repo '.cache'))+'\'
-foreach($path in @($DatasetDirectory,$PreviewDirectory,$FeatureDirectory,$OutputDirectory)+$DevelopmentManifest){
+$privatePaths=@($DatasetDirectory,$PreviewDirectory,$FeatureDirectory,$OutputDirectory)+$DevelopmentManifest
+if($PreserveTestSplits){$privatePaths+=$PreserveTestSplits}
+if($VariantAudit){$privatePaths+=$VariantAudit}
+foreach($path in $privatePaths){
     if(-not ([IO.Path]::GetFullPath($path)).StartsWith($privateRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'All study inputs/outputs must remain in .cache.'}
 }
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
@@ -45,6 +50,8 @@ try{
     $report.phase='grouped-development-probe';Write-AiCheckpoint $report (Join-Path $OutputDirectory 'driver-status.json')
     $arguments=@((Join-Path $PSScriptRoot 'train_encoder_probe.py'),'--dataset',$DatasetDirectory,'--features',$FeatureDirectory,'--inputs',$PreviewDirectory,'--output',$OutputDirectory,'--app-pid',[string]$Instance)
     foreach($manifest in $DevelopmentManifest){$arguments+=@('--development-manifest',$manifest)}
+    if($PreserveTestSplits){$arguments+=@('--preserve-test-splits',$PreserveTestSplits)}
+    if($VariantAudit){$arguments+=@('--variant-audit',$VariantAudit)}
     & $python @arguments
     if($LASTEXITCODE){throw 'Classifier study did not finish; inspect its status.'}
     $report.status='complete';$report.phase='development-results-ready'

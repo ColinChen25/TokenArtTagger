@@ -15,6 +15,8 @@ All paths are inside the ignored `.cache` directory. Finish preview export by re
 
 The feature worker remains sequential, CPU-only and resumable, with its existing lock, STOP and memory guards. Run it separately from Qwen, not simultaneously. Use the verified vision-only checkpoint to avoid loading unused text weights. Read the [encoder guide](local-ai-encoder.md) before provisioning or resuming.
 
+After a completed-cache resume, the latest status describes that cache-only session. Use the retained inference-bearing `session-*.json` records for the original memory peaks; a lower resume peak is not a new inference-memory measurement.
+
 ## Feature compatibility and saved coefficients
 
 The original feature-cache fingerprint identifies the entire input dataset and checkpoint packaging. A new image set therefore has a different cache identity even when it occupies the same mathematical feature space. `predict_encoder_probe.py` compares the model revision/configuration, preprocessing, preview dimensions, numerical precision, device, feature operation and package versions separately. Only dataset provenance and the already-verified lossless packaging change are ignored for this comparison. Unknown preprocessing settings or a different source model are rejected. Existing feature caches are retained unchanged.

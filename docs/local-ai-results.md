@@ -2,6 +2,35 @@
 
 Updated 2026-10-25 on `codex/local-ai-tagging`. **Both local approaches run on CPU, but neither is ready for unattended tagging.** The original Qwen benchmark used filename labels only for scoring. The new frozen-encoder experiment trains small classifiers on a separate labeled training partition. Target labels and filenames never enter feature extraction. No image tags or filenames were changed.
 
+## Focused single-image questions: 2026-10-25
+
+The [focused-field experiment](local-ai-focused-fields.md) reused the same eight exposed targets from the visual-reference studies: five casters and three ranged characters. A full-tag control and a role/style-only prompt both used one 768-pixel image, no visual references, the same role/style grammar, and bounded explanations (180 evidence characters, 96 uncertainty characters). The focused prompt forced gender and race to null. Both used the pinned Qwen model, CPU-only two-thread settings, 4,096 context and 256 output tokens.
+
+| Measure on the same eight targets | Full-tag control | Focused role/style |
+|---|---:|---:|
+| Valid outputs | 8/8 | 8/8 |
+| Correct role | 3/8 | 8/8 |
+| Correct role/style pair | 1/8 | 5/8 |
+| Median request latency | 41.9 s | 40.9 s |
+
+Five role/style pairs improved and one regressed. The focused model still called the druid, cleric and one bard a wizard. It issued a role and style on every target rather than abstaining. The focused result is **not five fully tagged images**: gender and race were deliberately unrequested. These eight difficult, repeatedly exposed images are development evidence only. No threshold or automatic acceptance follows from 8/8 role correctness.
+
+An initial one-image feasibility response used an unbounded explanation string, repeated itself and exhausted the output budget. It remains an invalid result under `focused-role-style-v1`; it was not reconstructed from its incomplete JSON. The paired runs above use version 2's bounded strings in both arms. Bounds can end a phrase awkwardly and are not a substitute for classification accuracy.
+
+A separate race-only question then improved race matches from **3/8 to 5/8**, with two improvements and no regressions. All eight outputs were valid partial suggestions, median request time was 39.3 seconds, and all issued a race rather than abstaining. Kitsune was called beastfolk, halfling human, and construct other. This is useful development evidence for separating tasks, but the remaining category errors still prevent unattended use.
+
+An exploratory composition of the saved outputs—gender from the full-tag control, role/style from the focused role question, and race from the focused anatomy question—gave **3/8 full matches**, versus 1/8 for the control. This is an analysis of existing responses, not a newly validated end-to-end tagger. The median sum of the three saved request times was 121.6 seconds per target, excluding orchestration beyond those requests. The role/style improvement alone must not be presented as complete-tag accuracy.
+
+Across these three runs, peak sampled incremental working set was at most **3.11 GiB**, sampled private memory **3.40 GiB**, and combined worker/launcher/app working set **3.97 GiB**. These are sampled Qwen measurements, not OS high-water values. Zero reported VRAM, per-image unloading and final cleanup were verified. Completed-run resumes reused all results without further inference. No explicit refusals were detected in these eight targets; this is not a new representative content-compatibility sample. Next: test focused questions and actual abstention on the larger already-exposed development challenge before adopting them in a desktop review queue. Keep the 169 reserved-test images untouched until their variant audit is complete.
+
+## New-image learned-classifier pilot: 2026-10-25
+
+The [review-only suggestion pipeline](local-ai-suggestions.md) now applies saved numeric classifiers to compatible features from new images without retraining. Its first four targets are the untagged images already exposed in the original Qwen pilot. MCP source hashes and filename state were verified, previews remained label-blind, and all four suggestions were saved separately from app tags. They have no authoritative labels, so **no accuracy score is reported**.
+
+The vision-only encoder's OS private-memory peak was **1.08 GiB**; combined worker/launcher/app working set peaked at **1.59 GiB**, with at least **10.02 GiB** available on the development machine. The encoder exited and cleanup passed. This remains a measurement on the 32 GB machine, not a 16 GB hardware certification. Conservative admission/reserve guards remain in force. No download or retraining was needed.
+
+The new coefficient reader reproduced all **233** saved development/calibration tag predictions exactly; maximum score difference was below `1e-15`. It rejects exact reserved-test targets before generating suggestions. Feature-space checks allow new dataset identities and the verified lossless checkpoint packaging, but reject changes to model/preprocessing/numerical settings. The four-card static review verifies PNG hashes and contains no apply action. All scores are explicitly uncalibrated and every suggestion requires review.
+
 ## Frozen encoder and learned classifiers: 2026-10-25
 
 All **1,469 tagged images** now have verified MCP previews and cached SigLIP 2 NaFlex features. The [encoder workflow](local-ai-encoder.md) learns three linear classifiers: gender, joint role/style, and race. The vision weights remain frozen. No additional download is needed to rerun the classifiers.
@@ -164,6 +193,9 @@ Use the [benchmark commands](local-ai-benchmark.md), [dataset exporter](local-ai
 - Baseline: `.cache/local-ai-benchmark/pilot-v2/` (manifest, 36 per-image results, session reports and `review.html`).
 - Schema comparison: `.cache/local-ai-benchmark/coupled-v1/`.
 - Fixed-reference comparison: `.cache/local-ai-benchmark/reference-one-v1/` (eight targets and one reference in `review.html`).
+- Target-only bounded full-tag control: `.cache/local-ai-benchmark/target-only-control-v1/`.
+- Focused role/style and race: `.cache/local-ai-benchmark/focused-role-style-v2/` and `focused-race-v2/`, with paired receipts and private reviews. The aggregate and exploratory composition are in `focused-study-v2-summary.json` beside those run directories.
+- Untagged classifier pilot: `.cache/encoder-inputs/backlog-pilot-v1/`, `.cache/encoder-features/backlog-pilot-v1/` and `.cache/encoder-suggestions/backlog-pilot-v1/`.
 - Two-reference context feasibility checkpoint: `.cache/local-ai-benchmark/references-v1/` (not part of the paired score).
 - Dataset: `.cache/local-ai-dataset/filename-v1/`.
 - Exact-content backlog audit: `.cache/local-ai-dataset/backlog-matches-v1/`.
@@ -174,4 +206,4 @@ Use the [benchmark commands](local-ai-benchmark.md), [dataset exporter](local-ai
 
 The private HTML report contains all 36 local PNG previews and escaped text, with no scripts or remote resources. File references and PNG signatures were checked. Browser rendering was not verified because the in-app browser rejects local file URLs.
 
-Verification passed: 36 model-free local AI checks, the real desktop/MCP integration suite using disposable fixtures, dataset checkpoint/resume, conflicting exact-match handling, reference leakage rejection before inference, and completed reference-run cache reuse. The earlier .NET suite passed 195 tests; subsequent changes here are PowerShell research tooling and documentation. The original library's workspace revision and pending-change count remained unchanged.
+Verification passed: 51 model-free local AI checks; the real desktop/MCP integration suite using disposable fixtures, including focused-source and untagged-preview guards; dataset checkpoint/resume; conflicting exact-match handling; reference leakage rejection before inference; and completed focused/control/reference cache reuse. Numeric classifier tests reproduced 233 existing predictions, rejected the reserved test, and checked the four-image review pipeline and invalid records. The earlier .NET suite passed 195 tests; subsequent changes here are PowerShell/Python research tooling and documentation. The original library's workspace revision and pending-change count remained unchanged.

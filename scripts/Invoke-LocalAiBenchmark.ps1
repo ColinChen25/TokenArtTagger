@@ -3,32 +3,40 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [ValidateRange(1,200)][int]$TaggedCount=32,
     [ValidateRange(0,50)][int]$UntaggedCount=4,
-    [ValidateRange(1,250)][int]$MaxItems=250,
+    [ValidateRange(0,250)][int]$MaxItems=250,
     [ValidateRange(256,1536)][int]$MaxDimension=768,
     [switch]$ConstrainRoleStyle,
     [string]$ReferencePlanFile,
     [string]$TargetManifestFile,
     [ValidateSet('all','role-style','race')][string]$Focus='all',
-    [switch]$BoundEvidence
+    [switch]$BoundEvidence,
+    [switch]$LabeledTargetsOnly,
+    [string]$ReuseDirectory,
+    [string]$AdditionalStopFile
 )
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'LocalAiRuntime.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'LocalAiMcp.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'LocalAiEvaluation.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'LocalAiCache.psm1') -Force
 $repo=Split-Path $PSScriptRoot -Parent
 $OutputDirectory=[IO.Path]::GetFullPath($OutputDirectory)
 $privateRoot=[IO.Path]::GetFullPath((Join-Path $repo '.cache'))+'\'
 if(-not $OutputDirectory.StartsWith($privateRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'Benchmark output must be inside the ignored repository .cache directory.'}
+if($AdditionalStopFile){
+    $AdditionalStopFile=[IO.Path]::GetFullPath($AdditionalStopFile)
+    if(-not $AdditionalStopFile.StartsWith($privateRoot,[StringComparison]::OrdinalIgnoreCase)){throw 'Shared stop signals must remain inside .cache.'}
+}
 New-Item -ItemType Directory -Force -Path $OutputDirectory,(Join-Path $OutputDirectory 'items') | Out-Null
 $lock=$null;$client=$null;$runtime=$null
-$report=[ordered]@{status='starting';workerProcessId=$PID;workerStartedUtc=[Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().ToString('o');startedUtc=[DateTime]::UtcNow.ToString('o');cleanupComplete=$false;completedThisRun=0}
+$report=[ordered]@{status='starting';workerProcessId=$PID;workerStartedUtc=[Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().ToString('o');startedUtc=[DateTime]::UtcNow.ToString('o');cleanupComplete=$false;completedThisRun=0;reusedThisRun=0}
 $reportPath=Join-Path $OutputDirectory 'status.json'
 $manifestPath=Join-Path $OutputDirectory 'manifest.json'
 $stopFile=Join-Path $OutputDirectory 'STOP'
 $results=New-Object Collections.Generic.List[object]
 try {
     $lock=[IO.File]::Open((Join-Path $OutputDirectory 'worker.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
-    if(Test-Path -LiteralPath $stopFile){throw 'paused: STOP marker exists. Remove it only when resumption is intended.'}
+    if((Test-Path -LiteralPath $stopFile) -or ($AdditionalStopFile -and (Test-Path -LiteralPath $AdditionalStopFile))){throw 'paused: STOP marker exists. Remove it only when resumption is intended.'}
     Write-AiCheckpoint $report $reportPath
     $client=Start-LocalAiMcp $repo $Instance
     $status=(Invoke-LocalAiTool $client 'app_status').structuredContent
@@ -36,6 +44,8 @@ try {
     if(-not $status.root){throw 'Scan the library with MCP before starting the benchmark.'}
     if($ReferencePlanFile -and ($TargetManifestFile -or $Focus -ne 'all')){throw 'Focused/target-only experiments cannot use a reference plan.'}
     if($Focus -ne 'all' -and -not $TargetManifestFile){throw 'Focused experiments require a previous development target manifest.'}
+    if($LabeledTargetsOnly -and -not $TargetManifestFile){throw 'Labeled-only selection requires a target manifest.'}
+    if($ReuseDirectory -and (-not $TargetManifestFile -or $ReferencePlanFile)){throw 'Cross-run cache reuse requires target-only selection.'}
     $contract=Get-AiTagContract $schema -ConstrainRoleStyle:$ConstrainRoleStyle -Focus $Focus -BoundEvidence:$BoundEvidence
     $settings=[ordered]@{model='qwen3-vl:2b-instruct-q4_K_M';digest='afc393e3572c07db0bc84aa460d928a16c75f3fbb9ca9e0dccc4fbd2dafb573e';runtime='0.40.8';promptVersion=$contract.Version;prompt=$contract.Prompt;schema=$contract.Schema;maxDimension=$MaxDimension;threads=2;context=4096;maxTokens=256;seed=42;temperature=0;cpuOnly=$true;unloadAfterEachImage=$true}
     $catalog=New-Object Collections.Generic.List[object]
@@ -58,10 +68,12 @@ try {
             $sourceStatus=Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path (Split-Path $TargetManifestFile -Parent) 'status.json') | ConvertFrom-Json
             if($sourceStatus.status -ne 'complete' -or -not $sourceStatus.cleanupComplete -or $sourceStatus.fingerprint -ne $source.fingerprint -or $source.root -ne $status.root){throw 'Target manifest must belong to a completed benchmark in this library.'}
             if(-not $source.fingerprint -or -not @($source.items).Count){throw 'Target manifest has no saved development sample.'}
-            foreach($entry in $source.items){
+            $sourceItems=@($source.items | Where-Object {-not $LabeledTargetsOnly -or $_.hasGroundTruth})
+            if(-not $sourceItems.Count){throw 'Target manifest contains no selected targets.'}
+            foreach($entry in $sourceItems){
                 if(-not $entry.hasGroundTruth -or $entry.sha256 -cnotmatch '^[a-f0-9]{64}$'){throw 'Target manifest requires authoritative labels and full hashes for every target.'}
             }
-            $plan=@{references=@();targets=@($source.items | ForEach-Object path);sources=@($source.items | ForEach-Object {@{path=$_.path;sha256=$_.sha256;tags=$_.expected}})}
+            $plan=@{references=@();targets=@($sourceItems | ForEach-Object path);sources=@($sourceItems | ForEach-Object {@{path=$_.path;sha256=$_.sha256;tags=$_.expected}})}
             $settings.sourceManifestFingerprint=$source.fingerprint
             $settings.targetSelectionHash=Get-AiSettingsHash $plan.sources
         }else{
@@ -110,6 +122,13 @@ try {
         }
     }
     $fingerprint=Get-AiSettingsHash $settings
+    $reuse=$null;$reuseByHash=@{}
+    if($ReuseDirectory){
+        if([IO.Path]::GetFullPath($ReuseDirectory) -eq $OutputDirectory){throw 'Reuse source must be a different run directory.'}
+        $reuse=Read-AiBenchmarkCache $ReuseDirectory
+        if($reuse.manifest.root -ne $status.root -or @($reuse.manifest.references).Count -or (Get-AiInferenceSettingsHash $reuse.manifest.settings) -ne (Get-AiInferenceSettingsHash $settings)){throw 'Cached inference settings differ; results cannot be reused.'}
+        foreach($row in $reuse.records){$reuseByHash[$row.sha256]=$row}
+    }
     if(Test-Path -LiteralPath $manifestPath){
         $manifest=Get-Content -Raw -Encoding UTF8 -LiteralPath $manifestPath | ConvertFrom-Json
         if($manifest.fingerprint -ne $fingerprint){throw 'Settings changed; use a new output directory so old results cannot be reused.'}
@@ -133,7 +152,7 @@ try {
         }
         foreach($item in $tagged){if($selected.Count -ge $TaggedCount){break};if(-not $chosen.ContainsKey($item.path)){$selected.Add($item);$chosen[$item.path]=$true}}
         foreach($item in @($catalog | Where-Object {-not $_.recognizedFilename} | Sort-Object @{Expression={Get-AiTextHash ('sample-v1|'+$_.path)}} | Select-Object -First $UntaggedCount)){$selected.Add($item)}
-        $selection=if($TargetManifestFile){'Reuse every target from a completed development benchmark; no visual references or target labels sent to the model.'}elseif($plan){'Fixed private development plan with one or two references shared by every target; not automatic retrieval.'}else{'Deterministic coverage of rare races and styles, followed by hash-ordered fill; untagged hash-ordered sample.'}
+        $selection=if($TargetManifestFile){'Reuse target manifest (labeled-only filter: '+[bool]$LabeledTargetsOnly+'); no visual references or target labels sent to the model.'}elseif($plan){'Fixed private development plan with one or two references shared by every target; not automatic retrieval.'}else{'Deterministic coverage of rare races and styles, followed by hash-ordered fill; untagged hash-ordered sample.'}
         $manifest=[ordered]@{createdUtc=[DateTime]::UtcNow.ToString('o');root=$status.root;fingerprint=$fingerprint;settings=$settings;taggedRequested=$TaggedCount;untaggedRequested=$UntaggedCount;selection=$selection;references=@($referenceSources | ForEach-Object {@{path=$_.path;sha256=$_.sha256;tags=$_.tags}});items=@($selected | ForEach-Object {@{path=$_.path;hasGroundTruth=$_.recognizedFilename;expected=$_.filenameTags}})}
         Write-AiCheckpoint $manifest $manifestPath
     }
@@ -144,7 +163,7 @@ try {
     Write-AiCheckpoint $report $reportPath
     $seenHashes=@{}
     foreach($entry in $manifest.items){
-        if(Test-Path -LiteralPath $stopFile){throw 'paused: Stop requested.'}
+        if((Test-Path -LiteralPath $stopFile) -or ($AdditionalStopFile -and (Test-Path -LiteralPath $AdditionalStopFile))){throw 'paused: Stop requested.'}
         $item=$lookup[$entry.path]
         if(-not $item){throw 'source_changed: A sampled file is absent from this scan. Use a new run directory.'}
         foreach($field in @('gender','role','weaponOrStyle','race')){if($entry.expected.$field -cne $item.filenameTags.$field){throw 'source_changed: Authoritative tags changed since selection. Use a new run directory.'}}
@@ -159,6 +178,13 @@ try {
         }
         $key=Get-AiTextHash ($entry.path+'|'+$hash+'|'+$fingerprint)
         $resultPath=Join-Path $OutputDirectory ('items\'+$key+'.json')
+        if($seenHashes.ContainsKey($hash)){throw 'Exact duplicate content in diagnostic sample; select a new deduplicated sample before scoring.'}
+        $seenHashes[$hash]=$true
+        if(-not (Test-Path -LiteralPath $resultPath) -and $reuseByHash.ContainsKey($hash)){
+            $imported=Copy-AiCachedResult $reuseByHash[$hash] $entry $hash $fingerprint $reuse
+            Write-AiCheckpoint $imported $resultPath
+            $report.reusedThisRun++
+        }
         if(Test-Path -LiteralPath $resultPath){
             $saved=Get-Content -Raw -Encoding UTF8 -LiteralPath $resultPath | ConvertFrom-Json
             if($saved.sha256 -ne $hash -or $saved.fingerprint -ne $fingerprint -or $saved.path -ne $entry.path){throw 'Invalid cached result identity.'}
@@ -173,9 +199,7 @@ try {
             }
             $results.Add($saved);$seenHashes[$hash]=$true;continue
         }
-        if($report.completedThisRun -ge $MaxItems){$report.status='checkpointed';break}
-        if($seenHashes.ContainsKey($hash)){throw 'Exact duplicate content in diagnostic sample; select a new deduplicated sample before scoring.'}
-        $seenHashes[$hash]=$true
+        if($report.completedThisRun -ge $MaxItems){$report.status='checkpointed';continue}
         $record=[ordered]@{path=$entry.path;sha256=$hash;fingerprint=$fingerprint;validationVersion='strict-tags-v2';hasGroundTruth=$entry.hasGroundTruth;expected=$entry.expected;startedUtc=[DateTime]::UtcNow.ToString('o');outcome='pending';prediction=$null;reason=$null;elapsedSeconds=$null;automaticAcceptance=$false}
         Write-Output ('Analyzing image {0}/{1} (checkpoint {2})...' -f ($results.Count+1),$report.total,$key.Substring(0,12))
         # Transport failures stop the run; unsupported image decoding is an item result.
@@ -197,7 +221,7 @@ try {
             if(-not $runtime){$runtime=Start-LocalAiRuntime $repo $OutputDirectory;$runtime.AdditionalProcessIds=@($client.Process.Id,$Instance);$runtime.AppBaseline=$appBaseline}
             $picture=@($pixels.content | Where-Object type -eq 'image')
             if($picture.Count -ne 1 -or $picture[0].mimeType -ne 'image/png'){throw 'Expected exactly one MCP PNG preview.'}
-            $answer=Invoke-LocalAiVision $runtime $picture[0].data $contract.Prompt $contract.Schema $stopFile 600 256 ($examples.ToArray())
+            $answer=Invoke-LocalAiVision $runtime $picture[0].data $contract.Prompt $contract.Schema $stopFile 600 256 ($examples.ToArray()) $AdditionalStopFile
             $checked=Test-AiPrediction $answer.response $schema -Focus $Focus -BoundEvidence:$BoundEvidence
             $record.outcome=$checked.outcome;$record.prediction=$checked.prediction;$record.reason=$checked.reason
             $record.response=$answer.response;$record.elapsedSeconds=$answer.elapsedSeconds;$record.sizeVram=$answer.loadedModel.size_vram

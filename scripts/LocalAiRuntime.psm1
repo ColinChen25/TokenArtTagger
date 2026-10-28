@@ -148,7 +148,8 @@ function Assert-AiPromptBudget($PromptTokens, [int]$MaxTokens=256) {
     }
 }
 
-function Invoke-LocalAiVision($Runtime, [string]$ImageBase64, [string]$Prompt, $Schema, [string]$StopFile, [int]$TimeoutSeconds = 600, [int]$MaxTokens = 256, [object[]]$Examples=@()) {
+function Invoke-LocalAiVision($Runtime, [string]$ImageBase64, [string]$Prompt, $Schema, [string]$StopFile, [int]$TimeoutSeconds = 600, [int]$MaxTokens = 256, [object[]]$Examples=@(), [string]$AdditionalStopFile) {
+    if((Test-Path -LiteralPath $StopFile) -or ($AdditionalStopFile -and (Test-Path -LiteralPath $AdditionalStopFile))){throw 'paused: Stop requested before inference.'}
     $memory=Get-AiMemory
     if ($memory.AvailablePhysical -lt 8GB) { throw 'memory_pressure: Need 8 GiB available before admitting an image (4 GiB workload plus 4 GiB reserve).' }
     $messages=New-AiVisionMessages $ImageBase64 $Prompt $Examples
@@ -162,7 +163,7 @@ function Invoke-LocalAiVision($Runtime, [string]$ImageBase64, [string]$Prompt, $
         $pending=$Runtime.Client.PostAsync(($Runtime.BaseUri+'/api/chat'),$content,$cts.Token)
         while (-not $pending.IsCompleted) {
             $sample=Get-LocalAiSample $Runtime
-            $reason=if(Test-Path -LiteralPath $StopFile){'Stop requested'}elseif($sample.availableBytes -lt 4GB){'Available RAM below 4 GiB reserve'}elseif($sample.workingSetBytes -gt 4GB){'Incremental workload above 4 GiB'}elseif($sample.commitAvailableBytes -lt 4GB){'Commit headroom below 4 GiB'}else{$null}
+            $reason=if((Test-Path -LiteralPath $StopFile) -or ($AdditionalStopFile -and (Test-Path -LiteralPath $AdditionalStopFile))){'Stop requested'}elseif($sample.availableBytes -lt 4GB){'Available RAM below 4 GiB reserve'}elseif($sample.workingSetBytes -gt 4GB){'Incremental workload above 4 GiB'}elseif($sample.commitAvailableBytes -lt 4GB){'Commit headroom below 4 GiB'}else{$null}
             if($reason){$cts.Cancel();throw "paused: $reason; result was not accepted."}
             Start-Sleep -Milliseconds 1000
         }

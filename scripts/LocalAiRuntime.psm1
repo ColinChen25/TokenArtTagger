@@ -63,7 +63,9 @@ function Start-LocalAiRuntime([string]$Repository, [string]$RunDirectory, [int]$
         $handler.UseProxy = $false
         $client = New-Object Net.Http.HttpClient($handler)
         $client.Timeout = [Threading.Timeout]::InfiniteTimeSpan
-        $context = @{ Server=$server; ServerPath=$server.Path; Started=$server.StartTime; Client=$client; Handler=$handler; BaseUri="http://127.0.0.1:$Port"; Model='qwen3-vl:2b-instruct-q4_K_M'; Digest=$digest; Profile=$profile; Owned=@{}; Samples=(New-Object Collections.Generic.List[object]); PeakWorkingSet=0L; PeakPrivateBytes=0L; PeakCombinedWorkingSet=0L; MinimumAvailable=[long]::MaxValue }
+        # Process.Path can be unavailable on the Start-Process object. Keep the verified
+        # executable we actually launched; cleanup still verifies live path and creation time.
+        $context = @{ Server=$server; ServerPath=[IO.Path]::GetFullPath($runtime); Started=$server.StartTime; Client=$client; Handler=$handler; BaseUri="http://127.0.0.1:$Port"; Model='qwen3-vl:2b-instruct-q4_K_M'; Digest=$digest; Profile=$profile; Owned=@{}; Samples=(New-Object Collections.Generic.List[object]); PeakWorkingSet=0L; PeakPrivateBytes=0L; PeakCombinedWorkingSet=0L; MinimumAvailable=[long]::MaxValue }
         $context.Owned[$server.Id]=$server.StartTime.Ticks
         $deadline = [DateTime]::UtcNow.AddSeconds(30)
         while ($true) {

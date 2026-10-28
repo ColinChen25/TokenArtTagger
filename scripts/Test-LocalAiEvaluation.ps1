@@ -84,6 +84,18 @@ Check ($focused.Schema.properties.evidence.maxLength -eq 180 -and $focused.Schem
 $bounded=Get-AiTagContract $schema -ConstrainRoleStyle -BoundEvidence
 Check ($bounded.Schema.properties.evidence.maxLength -eq 180 -and $bounded.Version -ne $coupled.Version) 'Bounded control reused an unbounded cache identity.'
 Check ((Test-AiPrediction @{done=$true;done_reason='stop';message=@{content=$complete.Replace('Robe and spellbook.',('x'*181))}} $schema -BoundEvidence).outcome -eq 'invalid_output') 'Overlong bounded explanation accepted.'
+$astral=[char]::ConvertFromUtf32(0x1F9D9)
+foreach($evidence in @(('x'*179+$astral),($astral*180))){
+    Check ((Test-AiPrediction @{done=$true;done_reason='stop';message=@{content=$complete.Replace('Robe and spellbook.',$evidence)}} $schema -BoundEvidence).outcome -eq 'complete') 'Valid supplementary Unicode characters counted twice.'
+}
+foreach($evidence in @(($astral*181),('x'*179+'a'+[char]0x0301))){
+    Check ((Test-AiPrediction @{done=$true;done_reason='stop';message=@{content=$complete.Replace('Robe and spellbook.',$evidence)}} $schema -BoundEvidence).outcome -eq 'invalid_output') 'Overlong Unicode code-point sequence accepted.'
+}
+foreach($length in 96..97){
+    $unicodeText=$complete.Replace('"uncertainty":""',('"uncertainty":"'+('x'*($length-1))+$astral+'"'))
+    $expected=if($length -eq 96){'complete'}else{'invalid_output'}
+    Check ((Test-AiPrediction @{done=$true;done_reason='stop';message=@{content=$unicodeText}} $schema -BoundEvidence).outcome -eq $expected) 'Unicode uncertainty bound differs from schema.'
+}
 Check ($focused.Version -ne $coupled.Version -and $focused.Prompt -notmatch 'Allowed tags and role/style combinations:') 'Focused prompt reused the baseline contract.'
 foreach($branch in $focused.Schema.properties.tags.anyOf){
     Check ($branch.properties.gender.type -eq 'null' -and $branch.properties.race.type -eq 'null') 'Role focus permits unrelated field predictions.'

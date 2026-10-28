@@ -85,6 +85,11 @@ Give your best supported tags, leaving individual uncertain fields null. If you 
     return @{Schema=$schema;Prompt=$prompt;Version=$version}
 }
 
+function Get-AiUnicodeLength([string]$Value) {
+    # JSON Schema maxLength counts Unicode code points, not UTF-16 code units or grapheme clusters.
+    return [regex]::Matches($Value,'[\uD800-\uDBFF][\uDC00-\uDFFF]|[\s\S]').Count
+}
+
 function Test-AiPrediction($Response, $TagSchema, [ValidateSet('all','role-style','race')][string]$Focus='all', [switch]$BoundEvidence) {
     $result=[ordered]@{outcome='invalid_output';prediction=$null;reason=$null}
     if(-not $Response.done -or $Response.done_reason -ne 'stop'){$result.reason='Incomplete or truncated generation.';return [pscustomobject]$result}
@@ -99,7 +104,7 @@ function Test-AiPrediction($Response, $TagSchema, [ValidateSet('all','role-style
     $keys=@($value.PSObject.Properties.Name | Sort-Object)
     if(($keys -join ',') -ne 'evidence,tags,uncertainty'){$result.reason='Incorrect response fields.';return [pscustomobject]$result}
     if($value.evidence -isnot [string] -or $value.uncertainty -isnot [string] -or $value.evidence.Length -gt 1000 -or $value.uncertainty.Length -gt 1000){$result.reason='Invalid evidence.';return [pscustomobject]$result}
-    if(($BoundEvidence -or $Focus -ne 'all') -and ($value.evidence.Length -gt 180 -or $value.uncertainty.Length -gt 96)){$result.reason='Explanation exceeded the bounded contract.';return [pscustomobject]$result}
+    if(($BoundEvidence -or $Focus -ne 'all') -and ((Get-AiUnicodeLength $value.evidence) -gt 180 -or (Get-AiUnicodeLength $value.uncertainty) -gt 96)){$result.reason='Explanation exceeded the bounded contract.';return [pscustomobject]$result}
     if((@($value.tags.PSObject.Properties.Name | Sort-Object) -join ',') -ne 'gender,race,role,weaponOrStyle'){$result.reason='All four tag fields are required.';return [pscustomobject]$result}
     $active=@(Get-AiFocusFields $Focus)
     foreach($field in @('gender','role','race','weaponOrStyle')){

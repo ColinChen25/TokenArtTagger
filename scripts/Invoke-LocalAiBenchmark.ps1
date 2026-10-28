@@ -194,13 +194,13 @@ try {
                 $checked=Test-AiPrediction $saved.response $schema -Focus $Focus -BoundEvidence:$BoundEvidence
                 $saved.outcome=$checked.outcome;$saved.prediction=$checked.prediction;$saved.reason=$checked.reason
                 $saved.expected=$entry.expected;$saved.hasGroundTruth=$entry.hasGroundTruth
-                $saved | Add-Member -NotePropertyName validationVersion -NotePropertyValue 'strict-tags-v2' -Force
+                $saved | Add-Member -NotePropertyName validationVersion -NotePropertyValue 'strict-tags-v3-unicode' -Force
                 Write-AiCheckpoint $saved $resultPath
             }
             $results.Add($saved);$seenHashes[$hash]=$true;continue
         }
         if($report.completedThisRun -ge $MaxItems){$report.status='checkpointed';continue}
-        $record=[ordered]@{path=$entry.path;sha256=$hash;fingerprint=$fingerprint;validationVersion='strict-tags-v2';hasGroundTruth=$entry.hasGroundTruth;expected=$entry.expected;startedUtc=[DateTime]::UtcNow.ToString('o');outcome='pending';prediction=$null;reason=$null;elapsedSeconds=$null;automaticAcceptance=$false}
+        $record=[ordered]@{path=$entry.path;sha256=$hash;fingerprint=$fingerprint;validationVersion='strict-tags-v3-unicode';hasGroundTruth=$entry.hasGroundTruth;expected=$entry.expected;startedUtc=[DateTime]::UtcNow.ToString('o');outcome='pending';prediction=$null;reason=$null;elapsedSeconds=$null;automaticAcceptance=$false}
         Write-Output ('Analyzing image {0}/{1} (checkpoint {2})...' -f ($results.Count+1),$report.total,$key.Substring(0,12))
         # Transport failures stop the run; unsupported image decoding is an item result.
         try {$pixels=Invoke-LocalAiTool $client 'view_image' @{id=$item.id;expectedRevision=$item.revision;maxDimension=$MaxDimension}}

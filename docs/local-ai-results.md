@@ -1,6 +1,55 @@
 # Local AI development results
 
-Updated 2026-10-25 on `codex/local-ai-tagging`. **Both local approaches run on CPU, but neither is ready for unattended tagging.** The original Qwen benchmark used filename labels only for scoring. The new frozen-encoder experiment trains small classifiers on a separate labeled training partition. Target labels and filenames never enter feature extraction. No image tags or filenames were changed.
+Updated 2026-10-28 on `codex/local-ai-tagging`. **Both local approaches run on CPU, but neither is ready for unattended tagging.** Qwen uses filename labels only for scoring; the frozen-encoder classifiers learn from a separate labeled training partition. Target labels and filenames never enter feature extraction. Four classifier proposals are now persisted in the separate MCP review queue. No image tags or filenames were changed.
+
+## Larger focused-field challenge: 2026-10-28
+
+The [three-arm challenge](local-ai-focused-fields.md#larger-development-challenge-and-cache-reuse) completed on all 32 labeled targets from the original baseline. Each arm reused eight earlier answers and computed the remaining 24: 72 new requests and 96 saved responses in total. All targets belong to the existing development partition; the 169 reserved-test images remain unscored. This is a deliberately difficult, already-exposed sample, not a whole-library accuracy estimate.
+
+| Same 32 development images | Bounded full-tag control | Role/style only | Race only | Composed saved fields |
+|---|---:|---:|---:|---:|
+| Valid responses | 32/32 | 32/32 | 32/32 | Not a model run |
+| Correct role/style pair | 16/32 | 14/32 | Not requested | 14/32 |
+| Correct race | 20/32 | Not requested | 21/32 | 21/32 |
+| All four tags correct | 12/32 | Not evaluated | Not evaluated | 8/32 |
+| Median saved request time | 42.3 s | 41.2 s | 38.8 s | 121.6 s summed |
+
+Composition uses control gender, focused role/style and focused race. It is an analysis of saved answers, not a new end-to-end run. The control matched 32 gender labels and 25 role labels; focused role/style matched only 21 roles. The original unconstrained baseline also had 12/32 full matches, with 26/32 valid labeled outputs. Better output validity did not improve complete tagging here.
+
+The eight-image improvement did **not** extend to the additional 24 images: role/style fell from **15/24 to 9/24**, race from **17/24 to 16/24**, and composed full matches from **11/24 to 5/24**. Across all 32, focused role/style had five improvements and seven regressions; focused race had three improvements and two regressions. Six melee and three generic figures were incorrectly assigned caster by the role/style prompt. Do not adopt it as the default or use three inference passes based on the earlier narrow sample.
+
+There were **zero in-scope abstentions** in every arm. Required nulls outside the question scope, and generic's null style, do not count as abstentions. These categorical answers still lack calibrated confidence. Automatic acceptance remains disabled.
+
+### Content compatibility and validation
+
+All 32 targets now have visually checked private content annotations. The additional 20 annotations came from checksum-verified MCP previews, not filename-based guesses.
+
+| Content group | Targets | Full control matches | Focused role/style matches | Focused race matches |
+|---|---:|---:|---:|---:|
+| Ordinary clothed | 21 | 6/21 | 11/21 | 12/21 |
+| Minimal outfits | 8 | 5/8 | 3/8 | 8/8 |
+| Artistic nudity | 3 | 1/3 | 0/3 | 1/3 |
+| Succubus-like, overlapping nudity | 1 | 1/1 | 0/1 | 1/1 |
+
+Every arm returned valid outputs for these groups after validation correction, with no explicit refusal detected. This establishes processing on the sampled artwork, not accurate tagging or broad content compatibility. Class and difficulty differ across groups, so their scores do not isolate a clothing effect. Minimal tribal outfits specifically still need representative coverage.
+
+One explanation used exactly 180 Unicode code points, including an emoji, but the old validator counted 181 UTF-16 units. The corrected validator matches JSON Schema length semantics. A completed-cache pass revalidated all **96** answers with **zero new inference**, changing one outcome from invalid to partial. Raw responses, target labels, hashes, settings fingerprints and saved timings were verified unchanged. Its incorrect tags remain incorrect.
+
+### Recovery and memory
+
+The shared-STOP test preserved 20 completed control records and discarded the interrupted response. A later cleanup error after role/style inference exposed an unavailable `Process.Path` property. The runtime now retains the verified launch path while still checking live process path and creation time before termination. Two sequential runtime lifecycle checks passed. Recovery verified absent owned processes and released locks; all final arms and cache revalidation report successful cleanup. Earlier session receipts, including the failure, are retained.
+
+Across inference-bearing sessions, sampled peaks were **3.22 GiB incremental working set**, **3.43 GiB private memory**, and **4.05 GiB combined worker/launcher/app working set**. These are sampled values on the 32 GB development machine, not OS high-water marks or a 16 GB hardware certification. CPU-only execution and per-image unloading were verified. Admission/reserve limits are unchanged; cache-only resumes are excluded from memory estimates.
+
+The private `.cache/local-ai-benchmark/challenge-fields-v1/` contains summaries, paired comparisons, content annotations, recovery receipts and a 32-card review. All PNG references and escaping were checked; no scripts or remote resources are used. Browser rendering was not verified. Reuse these checkpoints rather than repeating inference.
+
+## Persistent agent review queue: 2026-10-28
+
+`queue_ai_suggestions` and `list_ai_suggestions` now persist and inspect proposals separately from temporary tags. Imports check current revisions and full source hashes, reject conflicting batches, retain caller-reported model/run provenance, and preserve the original import snapshot on retries. The bounded, versioned store uses atomic replacement and writer locks. See the [queue contract](agent-integration.md#saved-ai-proposals).
+
+The four existing untagged classifier suggestions were imported without inference or retraining. A live read confirmed four review-required proposals and unchanged tag snapshots/workspace revision. Pending tag changes remain zero. Desktop acceptance/rejection controls and inference scheduling remain future work; importing a suggestion never stages a tag.
+
+Verification passed: **203 .NET tests**, including eight new store tests; **57 model-free local AI checks**, including Unicode bounds; 12 cache checks; synthetic focused-report checks; two sequential runtime lifecycle checks; and the expanded desktop/MCP integration suite. It covers the importer, idempotent retries, stale/hash/conflict rejection and preservation of original files. Release built without warnings. An active Debug bridge held its DLLs open, so the Release bridge and configurable CLI were used without interrupting it.
 
 ## Focused single-image questions: 2026-10-25
 
@@ -21,7 +70,7 @@ A separate race-only question then improved race matches from **3/8 to 5/8**, wi
 
 An exploratory composition of the saved outputs—gender from the full-tag control, role/style from the focused role question, and race from the focused anatomy question—gave **3/8 full matches**, versus 1/8 for the control. This is an analysis of existing responses, not a newly validated end-to-end tagger. The median sum of the three saved request times was 121.6 seconds per target, excluding orchestration beyond those requests. The role/style improvement alone must not be presented as complete-tag accuracy.
 
-Across these three runs, peak sampled incremental working set was at most **3.11 GiB**, sampled private memory **3.40 GiB**, and combined worker/launcher/app working set **3.97 GiB**. These are sampled Qwen measurements, not OS high-water values. Zero reported VRAM, per-image unloading and final cleanup were verified. Completed-run resumes reused all results without further inference. No explicit refusals were detected in these eight targets; this is not a new representative content-compatibility sample. Next: test focused questions and actual abstention on the larger already-exposed development challenge before adopting them in a desktop review queue. Keep the 169 reserved-test images untouched until their variant audit is complete.
+Across these three runs, peak sampled incremental working set was at most **3.11 GiB**, sampled private memory **3.40 GiB**, and combined worker/launcher/app working set **3.97 GiB**. These are sampled Qwen measurements, not OS high-water values. Zero reported VRAM, per-image unloading and final cleanup were verified. Completed-run resumes reused all results without further inference. No explicit refusals were detected in these eight targets; this was not a new representative content-compatibility sample. The larger challenge above supersedes this pilot's apparent improvement as guidance for selecting a default. Keep the 169 reserved-test images untouched until their variant audit is complete.
 
 ## New-image learned-classifier pilot: 2026-10-25
 
@@ -157,7 +206,7 @@ This rules out a universal failure to process the last image; it does not establ
 
 ## Artistic nudity and minimal outfits
 
-Twelve source images were visually inspected and annotated separately from filename labels. These content groups overlap; the succubus-like image is also in the artistic-nudity group.
+The first baseline audit visually inspected twelve source images and annotated them separately from filename labels. These content groups overlap; the succubus-like image is also in the artistic-nudity group. The expanded 32-image audit is reported above.
 
 | Visually verified group | Images | Valid predictions | Full tag matches | Detected refusals |
 |---|---:|---:|---:|---:|
@@ -166,7 +215,7 @@ Twelve source images were visually inspected and annotated separately from filen
 | Artistic nudity | 3 | 2 | 1 | 0 |
 | Succubus-like fantasy design | 1 | 1 | 1 | 0 |
 
-There was no observed content-only refusal in these cases. Errors occurred in both clothed and revealing art. This does not establish an effect of clothing coverage: class, rarity, style and difficulty differ across the tiny groups. The remaining 24 benchmark images lack manual content-group annotations. Minimal tribal outfits specifically still need representative examples; a fully clothed druid is not evidence for that case. Broad content compatibility remains unproven.
+There was no observed content-only refusal in these cases. Errors occurred in both clothed and revealing art. This does not establish an effect of clothing coverage: class, rarity, style and difficulty differ across the tiny groups. At this checkpoint the other 24 images lacked content annotations; the later audit covered 20 more labeled targets, leaving the four untagged baseline targets outside that audit. Minimal tribal outfits specifically still need representative examples; a fully clothed druid is not evidence for that case. Broad content compatibility remains unproven.
 
 ## Resources and recovery
 
@@ -184,7 +233,7 @@ Retain the feasibility samples as development data. Any future visual-reference 
 
 The frozen embedding index and learned classifiers now exist as research artifacts. Their measured results above do not support automatic acceptance. Do not infer that the Qwen language model has learned the collection: its weights were never trained.
 
-The remaining product work is a persistent suggestion/review workflow, duplicate-safe evaluation, reliable abstention/calibration, and validation on real 16 GB hardware with foreground applications. Keep automatic acceptance disabled until those checks support it.
+The remaining product work is desktop review controls and inference scheduling over the persistent proposal store, duplicate-safe evaluation, reliable abstention/calibration, and validation on real 16 GB hardware with foreground applications. Keep automatic acceptance disabled until those checks support it.
 
 ## Reproducibility and private artifacts
 
@@ -194,6 +243,7 @@ Use the [benchmark commands](local-ai-benchmark.md), [dataset exporter](local-ai
 - Schema comparison: `.cache/local-ai-benchmark/coupled-v1/`.
 - Fixed-reference comparison: `.cache/local-ai-benchmark/reference-one-v1/` (eight targets and one reference in `review.html`).
 - Target-only bounded full-tag control: `.cache/local-ai-benchmark/target-only-control-v1/`.
+- Larger three-arm challenge: `.cache/local-ai-benchmark/challenge-fields-v1/`, including 32 content annotations, paired summaries and the 96-response revalidation.
 - Focused role/style and race: `.cache/local-ai-benchmark/focused-role-style-v2/` and `focused-race-v2/`, with paired receipts and private reviews. The aggregate and exploratory composition are in `focused-study-v2-summary.json` beside those run directories.
 - Untagged classifier pilot: `.cache/encoder-inputs/backlog-pilot-v1/`, `.cache/encoder-features/backlog-pilot-v1/` and `.cache/encoder-suggestions/backlog-pilot-v1/`.
 - Two-reference context feasibility checkpoint: `.cache/local-ai-benchmark/references-v1/` (not part of the paired score).
@@ -206,4 +256,4 @@ Use the [benchmark commands](local-ai-benchmark.md), [dataset exporter](local-ai
 
 The private HTML report contains all 36 local PNG previews and escaped text, with no scripts or remote resources. File references and PNG signatures were checked. Browser rendering was not verified because the in-app browser rejects local file URLs.
 
-Verification passed: 51 model-free local AI checks; the real desktop/MCP integration suite using disposable fixtures, including focused-source and untagged-preview guards; dataset checkpoint/resume; conflicting exact-match handling; reference leakage rejection before inference; and completed focused/control/reference cache reuse. Numeric classifier tests reproduced 233 existing predictions, rejected the reserved test, and checked the four-image review pipeline and invalid records. The earlier .NET suite passed 195 tests; subsequent changes here are PowerShell/Python research tooling and documentation. The original library's workspace revision and pending-change count remained unchanged.
+Current verification counts are recorded in the 2026-10-28 section above. Earlier evidence includes dataset checkpoint/resume, conflicting exact-match handling, reference leakage rejection before inference, and completed focused/control/reference cache reuse. Numeric classifier tests reproduced 233 existing predictions, rejected the reserved test, and checked the four-image review pipeline and invalid records. The image library's tags and filenames remained unchanged.

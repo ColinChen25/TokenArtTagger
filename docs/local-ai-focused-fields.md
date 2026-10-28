@@ -31,7 +31,7 @@ Comparisons pair full content hashes and require identical authoritative labels.
 
 The original baseline contains 32 filename-labeled targets and four untagged targets. `-LabeledTargetsOnly` with `-TargetManifestFile` selects those 32 labeled targets; it does not select new images or touch the reserved final test. `-TaggedCount` must match the selected count and `-UntaggedCount` must be zero. All of these images were already exposed development data, including the 24 not used in the focused eight-image pilot.
 
-`Invoke-LocalAiFocusedChallenge.ps1` runs three sequential arms: the bounded full-tag control, focused role/style, and focused race. Each arm uses the existing benchmark, its own checkpoint directory, and the same source target manifest. The wrapper never runs two models concurrently. The 32-image continuation was started on 2026-10-28 in the private `challenge-fields-v1` directory; consult its status before launching another worker.
+`Invoke-LocalAiFocusedChallenge.ps1` runs three sequential arms: the bounded full-tag control, focused role/style, and focused race. Each arm uses the existing benchmark, its own checkpoint directory, and the same source target manifest. The wrapper never runs two models concurrently. The 32-image continuation completed on 2026-10-28 in the private `challenge-fields-v1` directory, followed by a zero-inference revalidation. Read the [measured results](local-ai-results.md#larger-focused-field-challenge-2026-10-28) and reuse those checkpoints.
 
 ```powershell
 # Optional preparation: reuse the completed eight-image pilot without new inference.
@@ -61,7 +61,7 @@ When all three arms and cleanup are complete, export the paired review without f
   --study .cache/local-ai-benchmark/challenge-fields-v1 `
   --inputs .cache/encoder-inputs/filename-v1 `
   --baseline .cache/local-ai-benchmark/pilot-v2 `
-  --annotations .cache/local-ai-benchmark/pilot-v2/content-annotations.json
+  --annotations .cache/local-ai-benchmark/challenge-fields-v1/content-annotations.json
 ```
 
 The report separates the earlier eight targets from the additional 24, compares focused fields on identical hashes, and retains failures in all denominators. Actual null answers within the question's scope count as abstentions; required nulls outside it and a generic character's null style do not. Composed fields are an analysis of three saved answers, not a new end-to-end inference or confidence estimate. Memory maxima come from sessions with new inference. The private HTML uses verified existing MCP previews, escaped text and no scripts or remote resources; its static validation does not establish browser rendering.

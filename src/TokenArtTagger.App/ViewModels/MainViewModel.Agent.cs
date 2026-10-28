@@ -104,6 +104,8 @@ public sealed partial class MainViewModel
             {
                 case "app_status": return AgentResult.Data(DescribeStatus());
                 case "tag_schema": return AgentResult.Data(AgentToolCatalog.Schema);
+                case "queue_ai_suggestions": return await QueueAiSuggestionsAsync(args, token);
+                case "list_ai_suggestions": return await ListAiSuggestionsAsync(args, token);
                 case "scan_images":
                     CheckWorkspaceRevision(args);
                     var root = args.RequiredString("root");

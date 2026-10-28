@@ -37,6 +37,25 @@ public static class AgentToolCatalog
         { ["id"] = String("Image ID."), ["includeHash"] = new { type = "boolean" } }, "id"), true),
         Tool("view_image", "Return a bounded PNG to the calling agent/model. First frame only; Windows codecs determine WebP support. Requires current image revision.", Object(new()
         { ["id"] = String("Image ID."), ["expectedRevision"] = String("Current revision."), ["maxDimension"] = Integer(256, 1536) }, "id", "expectedRevision"), true),
+        Tool("queue_ai_suggestions", "Persist review-only AI proposals separately from temporary tags. Verifies current revisions and full source hashes for the entire batch. Does not apply tags or rename. Provider/model provenance is supplied by the caller, not authenticated by this tool.", Object(new()
+        {
+            ["suggestions"] = Array(Object(new()
+            {
+                ["id"] = String("Image ID."), ["expectedRevision"] = String("Current image revision."),
+                ["sha256"] = String("Full lowercase SHA-256 of the source bytes used for prediction."),
+                ["tags"] = Object(new() { ["gender"] = NullableString(), ["role"] = NullableString(), ["weaponOrStyle"] = NullableString(), ["race"] = NullableString() }, "gender", "role", "weaponOrStyle", "race"),
+                ["provider"] = String("Local provider name; at most 80 characters."),
+                ["model"] = String("Model/version identity; at most 256 characters."),
+                ["runFingerprint"] = String("Full lowercase SHA-256 identifying the inference settings or saved run."),
+                ["evidence"] = String("Short visible evidence, at most 2000 characters; plain text only.")
+            }, "id", "expectedRevision", "sha256", "tags", "provider", "model", "runFingerprint"))
+        }, "suggestions"), false),
+        Tool("list_ai_suggestions", "Page saved review-only proposals for images in the current scan. Includes live image revisions and import snapshots. Listing does not rehash source bytes; metadata equality does not establish content equality. No tag changes.", Object(new()
+        {
+            ["offset"] = Integer(0, int.MaxValue), ["limit"] = Integer(1, 100), ["imageId"] = String("Optional current image ID."),
+            ["expectedWorkspaceRevision"] = String("Optional consistency check for the current scan."),
+            ["expectedQueueRevision"] = String("Optional consistency check from the previous queue page.")
+        }), true),
         Tool("update_tags", "Replace temporary tags in one validated batch (max 100). All four fields required; null means unresolved. Stale revisions reject the whole batch. Does not rename files.", Object(new()
         {
             ["changes"] = Array(Object(new()

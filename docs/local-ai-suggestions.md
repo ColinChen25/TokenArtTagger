@@ -31,4 +31,20 @@ The classifier cannot identify a race absent from training. Its scores remain un
 
 `test_encoder_prediction.py` compares numeric prediction against scikit-learn, verifies feature-space compatibility boundaries, and—when the private study exists—reproduces all 233 already-scored development/calibration predictions. It also checks rejection of the reserved test. With the private unlabeled pilot present, it exercises the end-to-end suggestion/export path and invalid review guards. `Test-AgentIntegration.ps1` covers actual MCP preview export, cached resume and changed-source rejection with disposable images.
 
-The next product step is a persistent desktop review queue with explicit field acceptance and provenance. This report is a private research/review artifact; automatic tagging and a desktop AI workflow are not yet implemented.
+## Save the pilot to the agent review queue
+
+The app now supports persistent, review-only proposals through `queue_ai_suggestions` and `list_ai_suggestions`. The saved classifier output can be imported without loading either model:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/Import-LocalAiSuggestions.ps1 `
+  -Instance <app-pid> -Configuration Release `
+  -SuggestionsDirectory .cache/encoder-suggestions/backlog-pilot-v1 `
+  -SourceBenchmarkDirectory .cache/local-ai-benchmark/pilot-v2 `
+  -Model "siglip2-base-patch16-naflex + probe-v3"
+```
+
+Use the configuration of the newly built bridge; Debug remains the default. Keep the source library scanned. The importer accepts 1–100 completed review-only classifier results, matches their hashes to the source benchmark's untagged targets, pages the current app's untagged filenames, and verifies live hashes/revisions. If a source now has authoritative filename tags, disappeared, or changed, import stops. It refuses automatic-acceptance artifacts. It saves a private request and receipt beside the suggestions. Repeating a successful import is idempotent; no inference or tag application occurs.
+
+The queue retains the supplied model label, run fingerprint, proposed fields and tag snapshot. Scores remain in the original private classifier report; they are not presented as calibrated confidence in the app. See the [queue contract](agent-integration.md#saved-ai-proposals) for limits, revisions and retry behavior.
+
+The next product step is desktop review controls with explicit field acceptance/rejection and provenance. The persistent agent queue is implemented; automatic tagging and a desktop AI review interface are not yet implemented.

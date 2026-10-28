@@ -17,7 +17,7 @@ public sealed class AgentProtocolTests
         Assert.AreEqual("2025-06-18", init.GetProperty("result").GetProperty("protocolVersion").GetString());
         Assert.IsNull(await server.HandleAsync("""{"jsonrpc":"2.0","method":"notifications/initialized"}"""));
         var tools = Json((await server.HandleAsync("""{"jsonrpc":"2.0","id":"tools","method":"tools/list"}"""))!);
-        Assert.AreEqual(11, tools.GetProperty("result").GetProperty("tools").GetArrayLength());
+        Assert.AreEqual(13, tools.GetProperty("result").GetProperty("tools").GetArrayLength());
         Assert.AreEqual("tools", tools.GetProperty("id").GetString());
     }
 

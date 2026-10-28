@@ -48,12 +48,28 @@ If several instances are running, call `agent_instances`, then append `--instanc
 | `list_images` | Bounded pages, filename/tag search, folder scope, tagged/untagged/changed/incomplete/invalid filters |
 | `image_details` | Current and filename tags, revision, optional full SHA-256 |
 | `view_image` | Bounded PNG image content, preserving aspect ratio; first frame only |
+| `queue_ai_suggestions` | Verify source hashes/revisions and persist review-only proposals, separately from temporary tags |
+| `list_ai_suggestions` | Page proposals for the current scan, with import snapshots and current image details |
 | `update_tags` | Persist explicit temporary tag replacements, up to 100 images per call |
 | `reset_tags` | Restore specified images to filename-derived tags |
 | `select_images` | Select explicit images in the Library tab |
 | `preview_rename` | Select images and populate the ordinary rename preview |
 
 Tool schemas are discoverable through standard `tools/list`. Requests and results use JSON; normal results include both text and `structuredContent`. Image results also contain an MCP image content block. [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools).
+
+## Saved AI proposals
+
+`queue_ai_suggestions` accepts `suggestions` (1–100 entries). Each entry requires `id`, `expectedRevision`, source `sha256`, all four `tags`, `provider`, `model`, and `runFingerprint`. Both hashes are full lowercase SHA-256 values. Optional `evidence` is plain text, limited to 2,000 characters. Provider and model strings are limited to 80 and 256 characters. The app verifies current image bytes and revisions before the atomic import; it stores caller-reported model/run provenance without authenticating which model produced it. Null fields remain unresolved. Incompatible role/style combinations are rejected.
+
+Proposals live in `%LOCALAPPDATA%\TokenArtTagger\AiSuggestions\queue-v1.json` (or the independent `TOKENARTTAGGER_DATA_DIR` profile). They never enter work-in-progress tags, training labels, or rename previews automatically. The queue is versioned, bounded to 5,000 records and 16 MiB, and uses a process lock plus atomic file replacement. A conflicting import rejects the entire batch. Repeating the same path/content/provider/model/run and proposal returns `alreadyPresent` and preserves the original import snapshot. Another file with identical pixels remains a separate file instance. A full queue rejects additional records; it does not silently discard history.
+
+`list_ai_suggestions` accepts `offset`, `limit` (1–100), optional `imageId`, `expectedWorkspaceRevision`, and `expectedQueueRevision`. Save both revisions for consistent pagination. It returns suggestions only for files in the current scan, along with current image IDs/revisions, `metadataUnchanged`, and `tagsUnchanged` relative to import. Listing does **not** read the source bytes again; metadata equality is not content verification. A renamed file is not silently rebound to another file. Missing files outside the scan retain their private records but are omitted from that scan's pages.
+
+These tools add a persistent agent review queue. Desktop review controls, field acceptance/rejection history, archive controls, and automatic inference scheduling remain future work. Review proposals through the existing image tools; use `update_tags` only for an explicitly reviewed editing action with fresh revisions. Filename labels remain authoritative. A high classifier score or an imported proposal does not authorize applying it.
+
+The [classifier importer](local-ai-suggestions.md#save-the-pilot-to-the-agent-review-queue) joins completed private predictions to their original untagged benchmark sources, rechecks live identities, and calls the queue tool. The benchmark MCP client keeps its read-only tool allowlist.
+
+If an active MCP bridge locks Debug build outputs, build with `scripts/Build-Agent.ps1 -Offline -Configuration Release` and use `scripts/Start-Agent.ps1 -Configuration Release -Call <tool> -ArgumentFile <private-json>`. The optional configuration also applies to `Test-AgentIntegration.ps1`. Restart the app and reload the client after selecting a newly built bridge; an already-connected bridge keeps its old tool catalog until reloaded. No connection configuration is changed automatically.
 
 ## A typical session
 

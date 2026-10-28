@@ -1,10 +1,10 @@
-param([int]$Instance = 0, [string]$Call, [string]$ArgumentFile)
+param([int]$Instance = 0, [string]$Call, [string]$ArgumentFile, [ValidateSet('Debug','Release')][string]$Configuration='Debug')
 $ErrorActionPreference = 'Stop'
 $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 [Console]::InputEncoding = $OutputEncoding
 [Console]::OutputEncoding = $OutputEncoding
 $repo = Split-Path $PSScriptRoot -Parent
-$dll = Join-Path $repo 'src\TokenArtTagger.Agent\bin\Debug\net10.0\TokenArtTagger.Agent.dll'
+$dll = Join-Path $repo ('src\TokenArtTagger.Agent\bin\'+$Configuration+'\net10.0\TokenArtTagger.Agent.dll')
 $sdk = Join-Path $repo '.tools\dotnet\dotnet.exe'
 if (-not (Test-Path -LiteralPath $sdk)) { $sdk = (Get-Command dotnet -ErrorAction Stop).Source }
 if (-not (Test-Path -LiteralPath $dll)) { [Console]::Error.WriteLine('Build first with scripts/Build-Agent.ps1.'); exit 2 }

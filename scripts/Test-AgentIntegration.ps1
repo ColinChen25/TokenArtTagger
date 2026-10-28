@@ -1,9 +1,9 @@
-param([string]$DotnetPath, [string]$AppDll, [string]$BridgeDll)
+param([string]$DotnetPath, [string]$AppDll, [string]$BridgeDll, [ValidateSet('Debug','Release')][string]$Configuration='Debug')
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 if (-not $DotnetPath) { $DotnetPath = Join-Path $repo '.tools\dotnet\dotnet.exe' }
-if (-not $AppDll) { $AppDll = Join-Path $repo 'src\TokenArtTagger.App\bin\Debug\net10.0-windows\TokenArtTagger.App.dll' }
-if (-not $BridgeDll) { $BridgeDll = Join-Path $repo 'src\TokenArtTagger.Agent\bin\Debug\net10.0\TokenArtTagger.Agent.dll' }
+if (-not $AppDll) { $AppDll = Join-Path $repo ('src\TokenArtTagger.App\bin\'+$Configuration+'\net10.0-windows\TokenArtTagger.App.dll') }
+if (-not $BridgeDll) { $BridgeDll = Join-Path $repo ('src\TokenArtTagger.Agent\bin\'+$Configuration+'\net10.0\TokenArtTagger.Agent.dll') }
 $testRoot = Join-Path $repo ('.cache\agent-smoke\' + [Guid]::NewGuid().ToString('N'))
 $fixture = Join-Path $testRoot ('images-' + [char]0x56FE)
 $sorted = Join-Path $fixture 'Sorted'
@@ -70,20 +70,20 @@ try {
     Check ($init.protocolVersion -eq '2025-11-25') 'Protocol negotiation failed.'
     SendLine '{"jsonrpc":"2.0","method":"notifications/initialized"}'
     $tools = Rpc 'tools/list' @{}
-    Check ($tools.tools.Count -eq 11) 'Unexpected tool count.'
+    Check ($tools.tools.Count -eq 13) 'Unexpected tool count.'
     [void](Call 'tag_schema' @{})
     [void](Call 'agent_instances' @{})
     $status = (Call 'app_status' @{}).structuredContent
     Check ($status.count -eq 0) 'Test app did not start empty.'
     $launcher = Join-Path $PSScriptRoot 'Start-Agent.ps1'
-    $cliStatus = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcher -Instance $app.Id -Call app_status | ConvertFrom-Json
+    $cliStatus = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcher -Configuration $Configuration -Instance $app.Id -Call app_status | ConvertFrom-Json
     Check (-not $cliStatus.isError -and $cliStatus.structuredContent.count -eq 0) 'One-shot CLI without argument file failed.'
     $scanned = (Call 'scan_images' @{ root = $fixture; excludeDirectories = @($sorted); expectedWorkspaceRevision = $status.workspaceRevision }).structuredContent
     Check ($scanned.count -eq 2) 'Nested-folder exclusion failed.'
     $list = (Call 'list_images' @{ limit = 100 }).structuredContent
     $argumentFile = Join-Path $testRoot 'list-request.json'
     @{ folder = $fixture; recursive = $false } | ConvertTo-Json | Set-Content -LiteralPath $argumentFile -Encoding UTF8
-    $cliList = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcher -Instance $app.Id -Call list_images -ArgumentFile $argumentFile | ConvertFrom-Json
+    $cliList = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcher -Configuration $Configuration -Instance $app.Id -Call list_images -ArgumentFile $argumentFile | ConvertFrom-Json
     Check (-not $cliList.isError -and $cliList.structuredContent.total -eq 2) 'One-shot CLI did not preserve Unicode folder paths.'
     $a = $list.images[0]; $b = $list.images[1]
     $tags = @{ gender = 'female'; role = 'range'; weaponOrStyle = 'bow'; race = 'elf' }
@@ -99,6 +99,33 @@ try {
     Check ($picture.structuredContent.width -eq 8 -and $picture.structuredContent.height -eq 6) 'Image dimensions changed unexpectedly.'
     $detail = (Call 'image_details' @{ id = $a.id; includeHash = $true }).structuredContent
     Check ($detail.sha256 -eq (Get-FileHash -LiteralPath $a.path -Algorithm SHA256).Hash.ToLowerInvariant()) 'Content hash mismatch.'
+    # Proposals persist separately from manual work in progress and authoritative filenames.
+    $queueBefore=(Call 'list_ai_suggestions' @{}).structuredContent
+    Check ($queueBefore.total -eq 0) 'Isolated proposal queue did not start empty.'
+    $proposalA=@{id=$a.id;expectedRevision=$changed.revision;sha256=$detail.sha256;tags=@{gender='male';role='generic';weaponOrStyle=$null;race='human'};provider='fixture';model='local-fixture';runFingerprint=('a'*64);evidence='Fixture observation'}
+    $proposalB=@{id=$b.id;expectedRevision=$b.revision;sha256=('0'*64);tags=$tags;provider='fixture';model='local-fixture';runFingerprint=('a'*64)}
+    [void](Call 'queue_ai_suggestions' @{suggestions=@($proposalA,$proposalB)} 'source_changed')
+    Check (((Call 'list_ai_suggestions' @{}).structuredContent.total) -eq 0) 'Invalid source hash partly imported proposals.'
+    $proposalB.sha256=$detail.sha256
+    $queueWorkspace=(Call 'app_status' @{}).structuredContent.workspaceRevision
+    $queued=(Call 'queue_ai_suggestions' @{suggestions=@($proposalA,$proposalB)}).structuredContent
+    Check ($queued.imported -eq 2 -and $queued.reviewRequired -and -not $queued.automaticAcceptance -and $queued.workspaceRevision -eq $queueWorkspace) 'Queue import changed tags or acceptance policy.'
+    $retried=(Call 'queue_ai_suggestions' @{suggestions=@($proposalA,$proposalB)}).structuredContent
+    Check ($retried.imported -eq 0 -and $retried.alreadyPresent -eq 2) 'Repeated proposal import duplicated records.'
+    $cliQueue = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcher -Configuration $Configuration -Instance $app.Id -Call list_ai_suggestions | ConvertFrom-Json
+    Check (-not $cliQueue.isError -and $cliQueue.structuredContent.total -eq 2) 'Stable CLI did not expose the proposal queue.'
+    [void](Call 'list_ai_suggestions' @{expectedQueueRevision=$queueBefore.queueRevision} 'stale_queue')
+    $queueFirst=(Call 'list_ai_suggestions' @{limit=1;expectedWorkspaceRevision=$queueWorkspace}).structuredContent
+    $queueSecond=(Call 'list_ai_suggestions' @{offset=1;limit=1;expectedWorkspaceRevision=$queueWorkspace;expectedQueueRevision=$queueFirst.queueRevision}).structuredContent
+    Check ($queueFirst.total -eq 2 -and $queueFirst.nextOffset -eq 1 -and $null -eq $queueSecond.nextOffset -and $queueFirst.suggestions[0].suggestion.id -ne $queueSecond.suggestions[0].suggestion.id) 'Proposal pagination duplicated or omitted records.'
+    $queueA=(Call 'list_ai_suggestions' @{imageId=$a.id}).structuredContent
+    Check ($queueA.total -eq 1 -and $queueA.suggestions[0].suggestion.tags.role -eq 'generic' -and $queueA.suggestions[0].image.currentTags.role -eq 'range' -and $queueA.suggestions[0].tagsUnchanged -and -not $queueA.sourceContentRechecked) 'Saved proposal was confused with live tags or rehashed content.'
+    $proposalA.tags.race='elf'
+    [void](Call 'queue_ai_suggestions' @{suggestions=@($proposalA)} 'invalid_suggestion')
+    $proposalA.tags.race='human'
+    $proposalA.expectedRevision=$a.revision
+    [void](Call 'queue_ai_suggestions' @{suggestions=@($proposalA)} 'stale_image')
+    Check (((Call 'app_status' @{}).structuredContent.workspaceRevision) -eq $queueWorkspace) 'Proposal validation changed manual work in progress.'
     $target = @{ id = $a.id; expectedRevision = $changed.revision }
     [void](Call 'select_images' @{ targets = @($target) })
     Check (((Call 'app_status' @{}).structuredContent.selectedIds[0]) -eq $a.id) 'Desktop selection was not updated.'
@@ -113,6 +140,8 @@ try {
     $target = @{ id = $returned.images[0].id; expectedRevision = $returned.images[0].revision }
     [void](Call 'reset_tags' @{ targets = @($target) })
     Check (((Call 'app_status' @{}).structuredContent.changed) -eq 0) 'Reset did not restore filename tags.'
+    $restoredQueue=(Call 'list_ai_suggestions' @{imageId=$target.id}).structuredContent
+    Check ($restoredQueue.total -eq 1 -and -not $restoredQueue.suggestions[0].tagsUnchanged) 'Proposal queue did not survive rescan or detect later manual edits.'
     $status = (Call 'app_status' @{}).structuredContent
     [void](Call 'scan_images' @{ root = $fixture; expectedWorkspaceRevision = $status.workspaceRevision })
     $filtered = (Call 'list_images' @{ folder = $sorted; query = 'bard'; state = 'tagged'; limit = 2 }).structuredContent
@@ -228,6 +257,29 @@ try {
     Check ($LASTEXITCODE -eq 0 -and $unlabeledStatus.completedThisRun -eq 0 -and $unlabeledStatus.cleanupComplete) 'Untagged preview resume did not reuse its verified cache.'
     $inputText=Get-Content -Raw -LiteralPath (Join-Path $unlabeledPreviews 'inputs.json')
     Check ($inputText -notmatch 'filename|expected|gender|race' -and $inputText -notmatch [regex]::Escape($fixture)) 'Source labels or filenames leaked into encoder inputs.'
+    $suggestionFixture=Join-Path $testRoot 'classifier-suggestions'
+    New-Item -ItemType Directory -Path $suggestionFixture | Out-Null
+    $suggestionFingerprint=('c'*64)
+    $suggestionData=@{fingerprint=$suggestionFingerprint;automaticAcceptance=$false;scoresCalibrated=$false;finalTestEvaluated=$false;items=@(@{sha256=$unlabeledHash;prediction=@{gender='female';role=$null;weaponOrStyle=$null;race=$null};reviewRequired=$true;automaticAcceptance=$false;scoresCalibrated=$false})}
+    $suggestionData | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $suggestionFixture 'suggestions.json') -Encoding UTF8
+    @{fingerprint=$suggestionFingerprint;settings=@{}} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $suggestionFixture 'settings.json') -Encoding UTF8
+    @{fingerprint=$suggestionFingerprint;status='complete';cleanupComplete=$true} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $suggestionFixture 'status.json') -Encoding UTF8
+    $importScript=Join-Path $PSScriptRoot 'Import-LocalAiSuggestions.ps1'
+    foreach($importPass in 1..2){
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $importScript -Instance $app.Id -Configuration $Configuration -SuggestionsDirectory $suggestionFixture -SourceBenchmarkDirectory $unlabeledSource -Model 'fixture-model'
+        Check ($LASTEXITCODE -eq 0) 'Saved suggestion adapter failed.'
+        $importReceipt=Get-Content -Raw -LiteralPath (Join-Path $suggestionFixture 'queue-import.json') | ConvertFrom-Json
+        Check ($importReceipt.result.imported -eq (2-$importPass) -and -not $importReceipt.inference) 'Saved suggestion adapter duplicated or computed predictions.'
+    }
+    $suggestionData.items[0].automaticAcceptance=$true
+    $suggestionData | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $suggestionFixture 'suggestions.json') -Encoding UTF8
+    $savedErrorPreference=$ErrorActionPreference
+    try{
+        $ErrorActionPreference='Continue'
+        $null=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $importScript -Instance $app.Id -Configuration $Configuration -SuggestionsDirectory $suggestionFixture -SourceBenchmarkDirectory $unlabeledSource -Model 'fixture-model' 2>&1
+        $unsafeImportExit=$LASTEXITCODE
+    }finally{$ErrorActionPreference=$savedErrorPreference}
+    Check ($unsafeImportExit -ne 0) 'Automatic-acceptance artifact was imported.'
     $unlabeledManifest.items[0].sha256=('0'*64)
     $unlabeledManifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $unlabeledSource 'manifest.json') -Encoding UTF8
     $savedErrorPreference=$ErrorActionPreference
@@ -240,7 +292,7 @@ try {
     Check ($staleExit -ne 0 -and $stalePreviewStatus.error -like 'Benchmark source changed*') 'Changed untagged bytes accepted for encoder input.'
     $newHashes = @(Get-ChildItem -LiteralPath $fixture -File -Recurse | Get-FileHash | Select-Object Path,Hash)
     Check (-not (Compare-Object $originalHashes $newHashes -Property Path,Hash)) 'Source images were renamed or changed.'
-    'PASS: MCP handshake/discovery; all 11 tools; real desktop IPC; CLI and Unicode paths; nested exclusion; atomic validation; stale revisions; PNG pixels; SHA-256; selection; rename preview; rescan persistence; reset; filtered final pages; dataset checkpoint/resume and conflicting duplicates; reference leakage blocked before inference; original files unchanged.'
+    'PASS: MCP handshake/discovery; all 13 tools; real desktop IPC; CLI and Unicode paths; nested exclusion; atomic validation; stale revisions; PNG pixels; SHA-256; selection; rename preview; rescan persistence; reset; review-only suggestion import/retry/pagination and separate tag state; filtered final pages; dataset checkpoint/resume and conflicting duplicates; reference leakage blocked before inference; original files unchanged.'
     "Test artifacts: $testRoot"
 } finally {
     if ($bridge) { if (-not $bridge.HasExited) { $bridge.StandardInput.Close(); if (-not $bridge.WaitForExit(3000)) { $bridge.Kill() } }; $bridge.Dispose() }

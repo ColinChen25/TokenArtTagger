@@ -2,6 +2,8 @@
 
 For image-library operations, use the `token_art_tagger` MCP tools when available. They operate on the running WPF application's live state. Read `docs/agent-integration.md` for setup and the complete contract.
 
+For an existing local setup, read the ignored `.cache/local-ai/project-status.md` if present for machine-specific handoff context, then verify current state. Keep that private note, audit backups, image listings, network configuration and credentials out of commits. Public docs retain portable procedures and aggregate experiment results only.
+
 - Start with `app_status` and `tag_schema`; list images in pages rather than dumping the library.
 - Use `scan_images` exclusions or `list_images` folder filters when a tagged folder is nested in the backlog. Folder membership is not proof of missing tags; use the `untagged` filename-state filter.
 - Use `view_image` to inspect pixels, and `image_details` with `includeHash` for full content hashes. Do not rewrite filename-parsing or image-decoding scripts.

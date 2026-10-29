@@ -48,6 +48,44 @@ user-settings.json
 .codex/config.toml
 work-in-progress-tags.json
 
+# Local credentials and client configuration
+.env
+.env.*
+!.env.example
+.aws/
+.azure/
+.codex/
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Private model, feature and review outputs, even outside .cache
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.sqlite
+*.sqlite3
+*.db
+AiSuggestions/
+queue-v1.json
+dataset-manifest.json
+inventory-summary.json
+file-metadata.json
+review.html
+AGENTS.local.md
+*.bundle
+
 # Accidental image-library files
 *.jpg
 *.jpeg
@@ -55,6 +93,11 @@ work-in-progress-tags.json
 *.png
 *.webp
 *.gif
+*.bmp
+*.tif
+*.tiff
+*.avif
+*.heic
 
 # Logs and temporary files
 *.log

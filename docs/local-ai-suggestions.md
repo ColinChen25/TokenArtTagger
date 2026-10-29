@@ -47,4 +47,4 @@ Use the configuration of the newly built bridge; Debug remains the default. Keep
 
 The queue retains the supplied model label, run fingerprint, proposed fields and tag snapshot. Scores remain in the original private classifier report; they are not presented as calibrated confidence in the app. See the [queue contract](agent-integration.md#saved-ai-proposals) for limits, revisions and retry behavior.
 
-The next product step is desktop review controls with explicit field acceptance/rejection and provenance. The persistent agent queue is implemented; automatic tagging and a desktop AI review interface are not yet implemented.
+The [desktop review window](local-ai-desktop-review.md) now supports explicit field decisions, corrections, dismissal and saved provenance. It stages only user-reviewed temporary tags, with a separate rename confirmation. Automatic tagging and background inference scheduling remain future work.

@@ -27,6 +27,7 @@ Local agents can control the running app through MCP or a stable JSON command in
 
 - `Library`: select individual images, apply tags, preview selected or changed items, then confirm `Rename Selected`.
 - `Bucket Tagging`: choose a pass such as Gender, Role, Caster Style, or Race; assign selected thumbnails to virtual buckets; then apply a default bucket to the remaining images on the current page.
+- `Review AI suggestions` in Library: inspect saved proposals, keep or correct individual fields, and save reviewed temporary tags or dismiss a proposal. See the [desktop review guide](docs/local-ai-desktop-review.md). Renames still require the ordinary preview and confirmation.
 
 Partial bucket tags are saved as work-in-progress app data outside the scanned image folder and outside the repository by default.
 
@@ -74,7 +75,7 @@ The original extension and extension casing are preserved.
 - No SQLite database yet.
 - No freeform tags yet.
 - Thumbnail cache files are runtime artifacts stored outside the scanned image folder by default.
-- No desktop AI review interface yet. Agents can persist and retrieve proposals through the [MCP suggestion queue](docs/agent-integration.md#saved-ai-proposals). Local CPU research includes the Qwen benchmark, [focused single-image questions](docs/local-ai-focused-fields.md), and [review-only classifier suggestions](docs/local-ai-suggestions.md). These do not stage tags. Read [measured results](docs/local-ai-results.md) before considering unattended tagging.
+- No automatic inference scheduling or automatic acceptance. Agents can persist proposals through the [MCP suggestion queue](docs/agent-integration.md#saved-ai-proposals), and the desktop review window stages only explicit user decisions. Local CPU research includes the Qwen benchmark, [focused single-image questions](docs/local-ai-focused-fields.md), and [classifier suggestions](docs/local-ai-suggestions.md). Read [measured results](docs/local-ai-results.md) before considering unattended tagging.
 - Thumbnail decode failures are shown as blank thumbnails rather than blocking scan/rename.
 - Middle-click autoscroll is not implemented; normal scrollbar dragging and mouse wheel scrolling are the supported fast-scroll methods.
 - Library mode rectangle selection is temporarily disabled in v0.2.5 while its freeze is investigated. Bucket Tagging mode still supports rectangle selection.

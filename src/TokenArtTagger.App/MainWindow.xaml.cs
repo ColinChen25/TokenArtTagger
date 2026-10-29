@@ -57,6 +57,20 @@ public partial class MainWindow : Window
 
     private MainViewModel ViewModel => (MainViewModel)DataContext;
 
+    private async void ReviewAiSuggestions_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ViewModel.IsWorkspaceAvailable) return;
+        try
+        {
+            await ViewModel.WithAiReviewAsync(() =>
+            {
+                new AiReviewWindow(new AiReviewViewModel(ViewModel)) { Owner = this }.ShowDialog();
+                return Task.CompletedTask;
+            });
+        }
+        catch (Exception ex) { ViewModel.ShowWarning($"Cannot open AI review: {ex.Message}"); }
+    }
+
     private void LibraryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         using var logScope = App.DebugLog.Enter("SelectionChanged", "Library", SelectedSummary(LibraryList), new Dictionary<string, string?>

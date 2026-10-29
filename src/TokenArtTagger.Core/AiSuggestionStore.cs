@@ -31,7 +31,7 @@ public sealed record AiSuggestion(
         ValidateTags(TagsAtImport);
     }
 
-    private static void ValidateTags(TagSet tags)
+    public static void ValidateTags(TagSet tags)
     {
         if (tags.Gender is not null && !TagSchema.Genders.Contains(tags.Gender) ||
             tags.Role is not null && !TagSchema.Roles.Contains(tags.Role) ||

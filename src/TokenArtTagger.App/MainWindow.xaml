@@ -292,6 +292,8 @@
 
                     <Border Grid.Column="0" Background="#FFFFFF" BorderBrush="#D7D3CA" BorderThickness="1" CornerRadius="6" Padding="12">
                         <DockPanel>
+                            <Button DockPanel.Dock="Top" Content="Review AI suggestions" Click="ReviewAiSuggestions_Click"
+                                    Style="{StaticResource ToolButton}" Margin="0,0,0,12" />
                             <TextBlock DockPanel.Dock="Top" Text="Tags" Style="{StaticResource PanelTitle}" />
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <ItemsControl ItemsSource="{Binding TagButtonGroups}">

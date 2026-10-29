@@ -1,6 +1,16 @@
 # Local AI development results
 
-Updated 2026-10-28 on `codex/local-ai-tagging`. **Both local approaches run on CPU, but neither is ready for unattended tagging.** Qwen uses filename labels only for scoring; the frozen-encoder classifiers learn from a separate labeled training partition. Target labels and filenames never enter feature extraction. Four classifier proposals are now persisted in the separate MCP review queue. No image tags or filenames were changed.
+Updated 2026-10-29 on `codex/local-ai-tagging`. **Both local approaches run on CPU, but neither is ready for unattended tagging.** Qwen uses filename labels only for scoring; the frozen-encoder classifiers learn from a separate labeled training partition. Target labels and filenames never enter feature extraction. Four classifier proposals remain in the separate MCP review queue. No real-library image tags or filenames were changed.
+
+## Desktop review controls: 2026-10-29
+
+The [desktop review window](local-ai-desktop-review.md) now displays a verified preview, current/proposed tags and model/run provenance. Each field defaults to keeping the current value. The user can accept a proposed field, correct it, leave it unresolved or dismiss the proposal. Explicit replacement confirmation protects existing tags, role/style compatibility is checked without silently clearing fields, and saved decisions persist separately from original proposals. Review saves temporary tags only; filename changes retain the existing confirmation workflow.
+
+Saving rechecks both the full source hash and the captured image/tag revision. Source reads deny write/delete sharing through persistence. Failed tag saves restore the previous view-model tags. A separate immutable receipt is published only after tag persistence; a receipt-publication failure is reported as saved tags with a pending proposal rather than a successful completed review. MCP requests report busy while the modal review window is open. The MCP proposal list continues to include reviewed proposals and does not expose separate receipt status.
+
+Validation passed: **211 core/protocol tests and seven WPF dispatcher tests**, plus the expanded 13-tool MCP integration suite using disposable images. WPF checks instantiate the window, lay out the field templates at minimum size, and exercise actual dropdown/save-button bindings. No model runs or downloads were needed. The running Release app held its DLLs open, so verification used a separate `Review` project build without restarting it. The old app needs closing before launching the new build with the normal profile.
+
+Interactive screenshot/click verification remains outstanding: the computer-use helper timed out during app approval/capture, ending with `window capture timed out: timed out waiting on channel`. The isolated fixture process was stopped. The real collection and four saved proposals were not reviewed or modified. Next product work is interactive verification followed by bounded inference scheduling; measured model accuracy still rules out automatic acceptance, and actual 16 GB hardware validation remains outstanding.
 
 ## Larger focused-field challenge: 2026-10-28
 
@@ -47,7 +57,7 @@ The private `.cache/local-ai-benchmark/challenge-fields-v1/` contains summaries,
 
 `queue_ai_suggestions` and `list_ai_suggestions` now persist and inspect proposals separately from temporary tags. Imports check current revisions and full source hashes, reject conflicting batches, retain caller-reported model/run provenance, and preserve the original import snapshot on retries. The bounded, versioned store uses atomic replacement and writer locks. See the [queue contract](agent-integration.md#saved-ai-proposals).
 
-The four existing untagged classifier suggestions were imported without inference or retraining. A live read confirmed four review-required proposals and unchanged tag snapshots/workspace revision. Pending tag changes remain zero. Desktop acceptance/rejection controls and inference scheduling remain future work; importing a suggestion never stages a tag.
+The four existing untagged classifier suggestions were imported without inference or retraining. A live read confirmed four review-required proposals and unchanged tag snapshots/workspace revision. Pending tag changes remain zero. Desktop controls were added in the 2026-10-29 checkpoint above; inference scheduling remains future work. Importing a suggestion never stages a tag.
 
 Verification passed: **203 .NET tests**, including eight new store tests; **57 model-free local AI checks**, including Unicode bounds; 12 cache checks; synthetic focused-report checks; two sequential runtime lifecycle checks; and the expanded desktop/MCP integration suite. It covers the importer, idempotent retries, stale/hash/conflict rejection and preservation of original files. Release built without warnings. An active Debug bridge held its DLLs open, so the Release bridge and configurable CLI were used without interrupting it.
 

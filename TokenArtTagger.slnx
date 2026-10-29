@@ -6,6 +6,7 @@
     <Project Path="src/TokenArtTagger.Agent/TokenArtTagger.Agent.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/TokenArtTagger.App.Tests/TokenArtTagger.App.Tests.csproj" />
     <Project Path="tests/TokenArtTagger.Tests/TokenArtTagger.Tests.csproj" />
   </Folder>
 </Solution>
